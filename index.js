@@ -222,6 +222,7 @@
 	_window.MODELS = [];
 
 	class WebGLRipperInterceptor {
+		_IsEnabled = true;
 		_GLViewport = { x: 0, y: 0, width: 0, height: 0 };
 		_GLContext = null;
 		_GLState = new Map();
@@ -229,11 +230,17 @@
 		_GLActiveTextureIndex = 0;
 		_GLCurrentBoundTexture = null;
 		_GLTextures = new Map();
+
 		_GLCurrentUVS = [];
+		_GLCurrentUVIndex = -1;
 		_GLCurrentNormals = [];
+		_GLCurrentNormalIndex = -1;
 		_GLCurrentVerticies = [];
+		_GLCurrentVertexIndex = -1;
+
 		_GLCurrentAttribIndex = 0;
 		_GLCurrentAttrib = [];
+		_GLCurrentAttribEnabled = [];
 		_CurrentModels = [];
 		_TextureCache = new Map();
 		_isCapturing = false;
@@ -354,7 +361,9 @@
 				'uSampler',
 				'Texture0',
 				'texture',
-				'boneSampler'
+				'boneSampler',
+				'boneTexture',
+				'source' // Playcanvas.js
 			];
 			LogToParent("Found possible map_kD: ", uniformName);
 			return textureNames.includes(uniformName);
@@ -412,55 +421,134 @@
 			return textures;
 		}
 
-		HelperFunc_UpdateAllAttributes(self, gl) {
+		HelperFunc_UpdateAllAttributes(self, gl) { // Got help from: https://github.com/benvanik/WebGL-Inspector/blob/c5f961dba261cbd94d9b3ff3ddbaf8b7d3bf5ef9/core/ui/shared/BufferPreview.js#L191
 			let attribData = self.readAttribData(gl);
 
 			attribData.forEach(function(attr) {
+
+				if(!self._GLCurrentAttribEnabled[attr.loc])
+					return;
+
 				let _bufferData = self.getBufferDataFromBuffer(self, gl.getVertexAttrib(attr.loc, gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING));
-				if(_bufferData) {
-					let attribType = self.GetAttribValueType(attr);
-					let bufferData = null;
-					let bufferOffset = 0;
-					switch(attribType.type) { // Set buffer data to the correct typed array
+				if(!_bufferData)
+					return;
+
+				let attribType = self.GetAttribValueType(attr);
+				let bufferData = [];
+
+				let vAttribData = self._GLCurrentAttrib[attr.loc];
+				LogToParent("Got vAttribData: ", vAttribData, "Along with attr: ", attr);
+
+				let byteAdvance = 0;
+				switch(vAttribData.type) {
+					case gl.BYTE:
+					case gl.UNSIGNED_BYTE:
+						byteAdvance = 1 * vAttribData.size;
+						break;
+					case gl.SHORT:
+					case gl.UNSIGNED_SHORT:
+						byteAdvance = 2 * vAttribData.size;
+						break;
+					default:
+					case gl.FLOAT:
+						byteAdvance = 4 * vAttribData.size;
+						break;
+				}
+
+				let fStride = vAttribData.stride ? vAttribData.stride : byteAdvance;
+
+				switch(vAttribData.type) {
+					case gl.BYTE:
+						_bufferData = new Int8Array(_bufferData, 0);
+						break;
+					case gl.UNSIGNED_BYTE:
+						_bufferData = new Uint8Array(_bufferData, 0);
+						break;
+					case gl.SHORT:
+						_bufferData = new Int16Array(_bufferData, 0);
+						break;
+					case gl.UNSIGNED_SHORT:
+						_bufferData = new Uint16Array(_bufferData, 0);
+						break;
+					default:
+					case gl.FLOAT:
+						_bufferData = new Float32Array(_bufferData, 0);
+						break;
+				}
+
+				LogToParent("Final Stride is: ", fStride, ", Buffer byte length: ", _bufferData.byteLength, "Original Buffer Data: ", _bufferData);
+
+				var byteOffset = 0;
+				while(byteOffset < _bufferData.byteLength) {
+					var readView = null;
+					switch (vAttribData.type) {
 						case gl.BYTE:
-							bufferData = new Int8Array(_bufferData, bufferOffset);
+							readView = new Int8Array(_bufferData.buffer.slice(byteOffset));
 							break;
 						case gl.UNSIGNED_BYTE:
-							bufferData = new Uint8Array(_bufferData, bufferOffset);
+							readView = new Uint8Array(_bufferData.buffer.slice(byteOffset));
 							break;
 						case gl.SHORT:
-							bufferData = new Int16Array(_bufferData, bufferOffset);
+							readView = new Int16Array(_bufferData.buffer.slice(byteOffset));
 							break;
 						case gl.UNSIGNED_SHORT:
-							bufferData = new Uint16Array(_bufferData, bufferOffset);
+							readView = new Uint16Array(_bufferData.buffer.slice(byteOffset));
 							break;
 						default:
 						case gl.FLOAT:
-							bufferData = new Float32Array(_bufferData, bufferOffset);
+							readView = new Float32Array(_bufferData.buffer.slice(byteOffset));
 							break;
 					}
 
-					if(!bufferData) {
-						LogToParent("Couldn't get bufferData: ", attr);
-						return;
+					for(let i = 0; i < vAttribData.size; i++) {
+						bufferData.push(readView[i]);
 					}
 
-					LogToParent("Got Attribute Data: ", attr, bufferData);
+					byteOffset += fStride;
+				}
 
-					switch(attribType) {
-						case 0:
-							self._GLCurrentVerticies = bufferData;
-							break;
-						case 1:
-							self._GLCurrentNormals = bufferData;
-							break;
-						case 2:
-							self._GLCurrentUVS = bufferData;
-							break;
-						default:
-							LogToParent("Unknown Attrib Type: ", attr);
-							break;
-					}
+				if(!bufferData) {
+					LogToParent("Couldn't get bufferData: ", attr);
+					return;
+				}
+
+				switch(vAttribData.type) {
+					case gl.BYTE:
+						bufferData = new Int8Array(bufferData, 0);
+						break;
+					case gl.UNSIGNED_BYTE:
+						bufferData = new Uint8Array(bufferData, 0);
+						break;
+					case gl.SHORT:
+						bufferData = new Int16Array(bufferData, 0);
+						break;
+					case gl.UNSIGNED_SHORT:
+						bufferData = new Uint16Array(bufferData, 0);
+						break;
+					default:
+					case gl.FLOAT:
+						bufferData = new Float32Array(bufferData, 0);
+						break;
+				}
+
+				LogToParent("Got Attribute Data: ", attr, bufferData);
+
+				switch(attribType) {
+					case 0:
+						self._GLCurrentVerticies = bufferData;
+						self._GLCurrentVertexIndex = attr.loc;
+						break;
+					case 1:
+						self._GLCurrentNormals = bufferData;
+						self._GLCurrentNormalIndex = attr.loc;
+						break;
+					case 2:
+						self._GLCurrentUVS = bufferData;
+						self._GLCurrentUVIndex = attr.loc;
+						break;
+					default:
+						LogToParent("Unknown Attrib Type: ", attr);
+						break;
 				}
 			});
 		}
@@ -470,7 +558,7 @@
 			self._TextureCache = new Map();
 		}
 
-		hooked_viewport(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/viewport
+		hooked_viewport(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/viewport
 			let _x      = args[0];
 			let _y      = args[1];
 			let _width  = args[2];
@@ -478,15 +566,15 @@
 			self._GLViewport = { x: _x, y: _y, width: _width, height: _height };
 		}
 
-		hooked_activeTexture(self, gl, args) {
+		hooked_activeTexture(self, gl, args, oFunc) {
 			self._GLActiveTextureIndex = args[0] - gl.TEXTURE0;
 		}
 
-		hooked_texImage2D(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/texImage2D
+		hooked_texImage2D(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/texImage2D
 			let target = args[0];
 			if(target != gl.TEXTURE_2D)
 				return;
-			LogToParent("Got a TEXTURE_2D texImage2D call: ", args);
+			//LogToParent("Got a TEXTURE_2D texImage2D call: ", args);
 			let pixels = null;
 			switch(args.length) {
 				case 9:
@@ -504,19 +592,19 @@
 			if(pixels instanceof ImageData || pixels instanceof HTMLImageElement || pixels instanceof HTMLCanvasElement || pixels instanceof HTMLVideoElement || pixels instanceof ImageBitmap) {
 				self._GLCurrentBoundTexture.width = pixels.width;
 				self._GLCurrentBoundTexture.height = pixels.height;
-				LogToParent("Got tex width and height: ", pixels.width, ", ", pixels.height);
+				//LogToParent("Got tex width and height: ", pixels.width, ", ", pixels.height);
 			}
 		}
 
-		hooked_shaderSource(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/shaderSource
+		hooked_shaderSource(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/shaderSource
 			let shader = args[0];
 			let source = args[1];
 			if(!shader || !source)
 				return;
-			//LogToParent("Got Shader: ", shader, source);
+			LogToParent("Got Shader: ", shader, source);
 		}
 
-		hooked_bindTexture(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/bindTexture
+		hooked_bindTexture(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/bindTexture
 			let target = args[0];
 			let texture = args[1];
 			if(target != gl.TEXTURE_2D)
@@ -527,7 +615,7 @@
 			self._GLCurrentBoundTexture = texture;
 		}
 
-		hooked_drawArrays(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/drawArrays
+		hooked_drawArrays(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/drawArrays
 			if(!self._isCapturing)
 				return;
 
@@ -568,7 +656,7 @@
 			LogToParent("Finished Building OBJ: ", builtOBJ);
 		}
 
-		hooked_drawElements(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/drawElements
+		hooked_drawElements(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/drawElements
 			if(!self._isCapturing)
 				return;
 			LogToParent("Captured 'drawElements' call: ", args);
@@ -611,7 +699,7 @@
 			LogToParent("Finished Building OBJ: ", builtOBJ);
 		}
 
-		hooked_drawRangeElements(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext/drawRangeElements
+		hooked_drawRangeElements(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext/drawRangeElements
 			if(!self._isCapturing)
 				return;
 
@@ -625,7 +713,7 @@
 			LogToParent("Captured unsupported 'hooked_drawRangeElements' call: ", args);
 		}
 
-		hooked_drawBuffers(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext/drawBuffers
+		hooked_drawBuffers(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext/drawBuffers
 			if(!self._isCapturing)
 				return;
 
@@ -634,7 +722,7 @@
 			LogToParent("Captured unsupported 'drawBuffers' call: ", args);
 		}
 
-		hooked_drawElementsInstanced(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext/drawElementsInstanced
+		hooked_drawElementsInstanced(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext/drawElementsInstanced
 			if(!self._isCapturing)
 				return;
 			
@@ -651,13 +739,13 @@
 
 		}
 
-		hooked_bindBuffer(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/bindBuffer
+		hooked_bindBuffer(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/bindBuffer
 			let target = args[0];
 			let buffer = args[1];
 			self._GLState.set(target, buffer);
 		}
 
-		hooked_bufferData(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/bufferData
+		hooked_bufferData(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/bufferData
 			let target = args[0];
 			let data = null;
 			switch(args.length) {
@@ -681,37 +769,35 @@
 			LogToParent("Called buffer data without specifying data: ", args);
 		}
 
-		hooked_clear(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/clear
+		hooked_clear(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/clear
 			if(self._CurrentModels.length > 0 && self._isCapturing) {
 				LogToParent(`Downloading ${self._CurrentModels.length}`);
 				self._isCapturing = false;
 				let models = self._CurrentModels.slice();
-				setTimeout(function() {
-					let sleep = function(delay) {
-						var start = new Date().getTime();
-						while (new Date().getTime() < start + delay);
-					};
-					models.forEach(function(obj) {
-						Downloader.DownloadString(`${obj.name}.obj`, obj.BuildOBJ());
+				let sleep = function(delay) {
+					var start = new Date().getTime();
+					while (new Date().getTime() < start + delay);
+				};
+				models.forEach(function(obj) {
+					Downloader.DownloadString(`${obj.name}.obj`, obj.BuildOBJ());
+					sleep(250);
+					obj.textures.forEach(async function(texture) {
+						if(!texture._URL)
+							return;
+						await Downloader.DownloadImage(texture._FILENAME, texture._URL);
 						sleep(250);
-						obj.textures.forEach(async function(texture) {
-							if(!texture._URL)
-								return;
-							await Downloader.DownloadImage(texture._FILENAME, texture._URL);
-							sleep(250);
-						});
-						sleep(250);
-						if(obj.textures.length > 0) {
-							Downloader.DownloadString(`${obj.name}.mtl`, obj.BuildMTL());
-						}
-						sleep(150);
 					});
-					self._needsToReset = true;
-				}, 0); // Run download async
+					sleep(250);
+					if(obj.textures.length > 0) {
+						Downloader.DownloadString(`${obj.name}.mtl`, obj.BuildMTL());
+					}
+					sleep(150);
+				});
+				self._needsToReset = true;
 				self._CurrentModels = [];
 			}
 
-			if(_window.WEBGLRipperSettings.isCapturingScene) { // Fix Race conditions
+			if(_window.WEBGLRipperSettings.isCapturingScene && self._IsEnabled) { // Fix Race conditions
 				self._isCapturing = true;
 				_window.WEBGLRipperSettings.isCapturingScene = false;
 			}
@@ -726,30 +812,43 @@
 			self._GLCurrentVerticies = [];
 		}
 
-		hooked_enableVertexAttribArray(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/enableVertexAttribArray
+		hooked_enableVertexAttribArray(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/enableVertexAttribArray
 			if(!self._isCapturing)
 				return;
 			let index = args[0];
-			LogToParent("Captured enableVertexAttribArray, ", args);
+
+			self._GLCurrentAttribEnabled[index] = true;
 		}
 
-		hooked_vertexAttribIPointer(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext/vertexAttribIPointer
+		hooked_disableVertexAttribArray(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/disableVertexAttribArray
+			if(!self._isCapturing)
+				return;
+			let index = args[0];
+
+			self._GLCurrentAttribEnabled[index] = false;
+		}
+
+		hooked_vertexAttribIPointer(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext/vertexAttribIPointer
 			let index = args[0];
 			let size = args[1];
 			let type = args[2];
 			let stride = args[3];
 			let offset = args[4];
-			self._GLCurrentAttrib[index] = self.getCurrentArrayBuffer(self);
+			self._GLCurrentAttrib[index] = { size: size, type: type, stride: stride, offset: offset, normalized: false };
+			self._GLCurrentAttribEnabled[index] = true;
+			//LogToParent("Captured vertexAttribIPointer, ", args);
 		}
 
-		hooked_vertexAttribPointer(self, gl, args) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/vertexAttribPointer
+		hooked_vertexAttribPointer(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/vertexAttribPointer
 			let index = args[0];
 			let size = args[1];
 			let type = args[2];
 			let normalized = args[3];
 			let stride = args[4];
 			let offset = args[5];
-			self._GLCurrentAttrib[index] = self.getCurrentArrayBuffer(self);
+			self._GLCurrentAttrib[index] = { size: size, type: type, stride: stride, offset: offset, normalized: normalized };
+			self._GLCurrentAttribEnabled[index] = true;
+			//LogToParent("Captured vertexAttribPointer, ", args);
 		}
 
 		readUniformData(gl, p) {
@@ -831,7 +930,7 @@
 		}
 		let originalFunc = _GL[_Method];
 		_GL[_Method] = function() {
-			if(hookFunc(_RipperInterceptor, this, arguments))
+			if(hookFunc(_RipperInterceptor, this, arguments, originalFunc))
 				return;
 			return originalFunc.apply(this, arguments);
 		};
@@ -869,6 +968,7 @@
 			RegisterGLFunction(gl, glRipper, "vertexAttribPointer");
 			RegisterGLFunction(gl, glRipper, "vertexAttribIPointer");
 			RegisterGLFunction(gl, glRipper, "enableVertexAttribArray");
+			RegisterGLFunction(gl, glRipper, "disableVertexAttribArray");
 			RegisterGLFunction(gl, glRipper, "shaderSource");
 			RegisterGLFunction(gl, glRipper, "activeTexture");
 			RegisterGLFunction(gl, glRipper, "bindTexture");
@@ -879,6 +979,7 @@
 
 		return gl;
 	}; /* Got from 'WebGL-Inspector' https://github.com/benvanik/WebGL-Inspector/blob/master/core/extensions/chrome/contentscript.js#L178 */
+
 	hideHook(window.HTMLCanvasElement.prototype.getContext, oFunc);
   }
 
