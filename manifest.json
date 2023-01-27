@@ -4,9 +4,8 @@
 	"authors": [
 		{"name": "Rilshrink"}
 	],
-	"content_security_policy": "script-src 'self' 'unsafe-eval'; unsafe-inline object-src 'self'",
-	"version": "0.1",
-	"manifest_version": 2,
+	"version": "0.2",
+	"manifest_version": 3,
 	"content_scripts": [
 		{
 			"matches": ["<all_urls>"],
@@ -15,6 +14,10 @@
 			"all_frames": true
 		}
 	],
+	"web_accessible_resources": [{
+		"resources": ["webglripper.js"],
+		"matches": ["<all_urls>"]
+	}],
 	"icons": {
 		"16": "icon.png",
 		"48": "icon.png",
@@ -28,9 +31,5 @@
 		"<all_urls>",
 		"contextMenus",
 		"tabs"
-	],
-	"background": { 
-        "scripts": ["background.js"],
-        "persistent": false
-    }
+	]
 }
