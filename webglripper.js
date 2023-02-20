@@ -180,13 +180,16 @@ let _window = parent.window;
 
 // Create config object
 _window.WEBGLRipperSettings = {
-	CaptureSceneKeyCode: 45, // Insert Key
-	CaptureTexturesKeyCode: 45, // Insert Key
-	CaptureFolder: "/WebGLRipperRips", // Folder to save all of your captures into
+	// Globals
 	isCapturingScene: false, // Boolean if the scene is to be captured next frame
 	isCapturingTextures: false, // Boolean if the scene is to capture all textures
-	isDebug: true, // Boolean if debug
-	hasOverlay: false, // Checks if the window already has a created overlay
+	// Settings
+	CaptureSceneKeyCode: 45, // Insert Key
+	CaptureTexturesKeyCode: 45, // Insert Key
+	defaultTexWidth: 4096,
+	defaultTexHeight: 4096, // As we can't always retrieve the width and height of a texture, we must have a default size in that case.
+	shouldUnFlipTex: true, // If we should unflip the textures
+	isDebug: true, // Debug Printing
 	isDoShaderCalc: false // Force the shader to do calculations, useful for grabbing specific frames of vertex animations.
 };
 
@@ -196,15 +199,29 @@ let LogToParent = function () {
 	_window.console.log('[WebGLRipper]', ...arguments);
 };
 
+document.addEventListener("DOMContentLoaded", function(event) {
+	let hiddenSettings = document.getElementById("webgl_ripper_settings");
+	let settings = JSON.parse(hiddenSettings.textContent);
+	LogToParent("Loaded Settings: ", settings);
+
+	_window.WEBGLRipperSettings.defaultTexWidth = parseInt(settings.default_texture_res.split("x")[0]) || 4096;
+	_window.WEBGLRipperSettings.defaultTexHeight = parseInt(settings.default_texture_res.split("x")[1]) || 4096;
+	_window.WEBGLRipperSettings.isDoShaderCalc = settings.do_shader_calc;
+	_window.WEBGLRipperSettings.isDebug = settings.is_debug_mode;
+	_window.WEBGLRipperSettings.shouldUnFlipTex = settings.unflip_textures;
+});
+
 document.addEventListener('keydown', function (event) {
 	if (event.keyCode == _window.WEBGLRipperSettings.CaptureSceneKeyCode && !event.shiftKey) {
 		_window.WEBGLRipperSettings.isCapturingScene = true;
 		LogToParent("Capturing scene!");
 	}
+	/*
 	if (event.keyCode == _window.WEBGLRipperSettings.CaptureTexturesKeyCode && event.shiftKey) {
 		_window.WEBGLRipperSettings.isCapturingTextures = true;
 		LogToParent("Capturing textures!");
 	}
+	*/
 });
 
 _window.RIPPERS = [];
@@ -379,9 +396,9 @@ class WebGLRipperInterceptor {
 			return;
 		}
 
-		let texWidth = tex.width || 4096;
-		let texHeight = tex.height || 4096;
-		let uri = self.GetDataURIFromWebGLTexture(gl, tex, texWidth, texHeight);
+		let texWidth = tex.width || _window.WEBGLRipperSettings.defaultTexWidth;
+		let texHeight = tex.height || _window.WEBGLRipperSettings.defaultTexHeight;
+		let uri = self.GetDataURIFromWebGLTexture(gl, tex, texWidth, texHeight, _window.WEBGLRipperSettings.shouldUnFlipTex);
 
 		if (uri == null) {
 			LogToParent("Recieved null texture!");
@@ -433,9 +450,9 @@ class WebGLRipperInterceptor {
 				return;
 			}
 
-			let texWidth = tex.width || 4096;
-			let texHeight = tex.height || 4096;
-			let uri = self.GetDataURIFromWebGLTexture(gl, tex, texWidth, texHeight);
+			let texWidth = tex.width || _window.WEBGLRipperSettings.defaultTexWidth;
+			let texHeight = tex.height || _window.WEBGLRipperSettings.defaultTexHeight;
+			let uri = self.GetDataURIFromWebGLTexture(gl, tex, texWidth, texHeight, _window.WEBGLRipperSettings.shouldUnFlipTex);
 
 			if (uri == null) {
 				LogToParent("Recieved null texture!");
@@ -744,52 +761,6 @@ class WebGLRipperInterceptor {
 
 		self.HelperFunc_UpdateAllAttributes(self, gl);
 
-		if (_window.WEBGLRipperSettings.isDoShaderCalc) { /* Just seems to not want to work */
-			/* Setup Area */
-			const feedbackBuffer = gl.createBuffer();
-			gl.bindBuffer(gl.ARRAY_BUFFER, feedbackBuffer);
-			gl.bufferData(gl.ARRAY_BUFFER, self._GLCurrentVertices.length * 4, gl.STATIC_DRAW);
-
-			const tf = gl.createTransformFeedback();
-			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
-			gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, feedbackBuffer);
-			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
-			gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
-
-			const feedbackVertex = gl.createVertexArray();
-			gl.bindVertexArray(feedbackVertex);
-			gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 4, 0);
-			gl.enableVertexAttribArray(feedbackVertex);
-
-			gl.enable(gl.RASTERIZER_DISCARD);
-
-			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
-
-			gl.beginTransformFeedback(gl.TRIANGLES);
-			oFunc.apply(gl, args);
-			gl.endTransformFeedback();
-
-			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
-
-			gl.disable(gl.RASTERIZER_DISCARD);
-
-			const verticiesRaw = new Float32Array(self._GLCurrentVertices.length * 4);
-			gl.bindBuffer(gl.ARRAY_BUFFER, feedbackBuffer);
-			gl.getBufferSubData(gl.ARRAY_BUFFER, 0, verticiesRaw);
-
-			LogToParent("Got transform feedback verts: ", verticiesRaw);
-
-			gl.deleteBuffer(feedbackBuffer);
-
-
-			self._GLCurrentVertices = new Float32Array(self._GLCurrentVertices.length);
-			for (let i = 0; i < indCount; i++) {
-				self._GLCurrentVertices[i * 3 + 0] = verticiesRaw[i * 4 + 0];
-				self._GLCurrentVertices[i * 3 + 1] = verticiesRaw[i * 4 + 1];
-				self._GLCurrentVertices[i * 3 + 2] = verticiesRaw[i * 4 + 2];
-			}
-		}
-
 		let indTypeSize = 1;
 		switch (indType) {
 			case gl.UNSIGNED_BYTE:
@@ -836,6 +807,52 @@ class WebGLRipperInterceptor {
 		for (let ind = 0; ind < indCount; ind++)
 			indices[ind] = oIndices[_indOffset + ind];
 		LogToParent("New indices size: ", indices.length);
+
+		if (_window.WEBGLRipperSettings.isDoShaderCalc) { /* Just seems to not want to work */
+			/* Setup Area */
+			const feedbackBuffer = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, feedbackBuffer);
+			gl.bufferData(gl.ARRAY_BUFFER, self._GLCurrentVertices.length * 4, gl.STATIC_DRAW);
+
+			const tf = gl.createTransformFeedback();
+			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+			gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, feedbackBuffer);
+			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+			gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+
+			const feedbackVertex = gl.createVertexArray();
+			gl.bindVertexArray(feedbackVertex);
+			gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 4, 0);
+			gl.enableVertexAttribArray(feedbackVertex);
+
+			gl.enable(gl.RASTERIZER_DISCARD);
+
+			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+
+			gl.beginTransformFeedback(drawMode);
+			oFunc.apply(gl, args);
+			gl.endTransformFeedback();
+
+			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+
+			gl.disable(gl.RASTERIZER_DISCARD);
+
+			const verticiesRaw = new Float32Array(self._GLCurrentVertices.length * 4);
+			gl.bindBuffer(gl.ARRAY_BUFFER, feedbackBuffer);
+			gl.getBufferSubData(gl.ARRAY_BUFFER, 0, verticiesRaw);
+
+			LogToParent("Got transform feedback verts: ", verticiesRaw, feedbackBuffer);
+
+			gl.deleteBuffer(feedbackBuffer);
+
+
+			self._GLCurrentVertices = new Float32Array(self._GLCurrentVertices.length);
+			for (let i = 0; i < indCount; i++) {
+				self._GLCurrentVertices[i * 3 + 0] = verticiesRaw[i * 4 + 0];
+				self._GLCurrentVertices[i * 3 + 1] = verticiesRaw[i * 4 + 1];
+				self._GLCurrentVertices[i * 3 + 2] = verticiesRaw[i * 4 + 2];
+			}
+		}
 
 		let textures = self.HelperFunc_GetAllTextures(self, gl);
 
@@ -928,13 +945,16 @@ class WebGLRipperInterceptor {
 	hooked_clear(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/clear
 		if (self._CurrentModels.length > 0 && self._isCapturing) {
 			LogToParent(`Downloading ${self._CurrentModels.length}`);
-			self._isCapturing = false;
-			let models = self._CurrentModels.slice();
+			let models = self._CurrentModels.slice(); // Create a copy
+			
+			/* TODO: Make downloads async */
 
 			let sleep = function (delay) {
 				var start = new Date().getTime();
 				while (new Date().getTime() < start + delay);
 			};
+
+			// Download each model
 
 			models.forEach(async function (obj) {
 				Downloader.DownloadString(`${obj.name}.obj`, obj.BuildOBJ());
@@ -944,6 +964,8 @@ class WebGLRipperInterceptor {
 				}
 				sleep(150);
 			});
+
+			// Download each texture
 
 			let textures = [];
 			let texcache = [];
@@ -963,7 +985,9 @@ class WebGLRipperInterceptor {
 				sleep(250);
 			});
 
+			// Reset vars
 
+			self._isCapturing = false;
 			self._needsToReset = true;
 			self._CurrentModels = [];
 		}
@@ -984,9 +1008,9 @@ class WebGLRipperInterceptor {
 				let glTexture = self._GLAllTextures[i];
 				if (!glTexture.is2DTexture)
 					continue;
-				let texWidth = glTexture.width ? glTexture.width : 4096;
-				let texHeight = glTexture.height ? glTexture.height : 4096;
-				Downloader.DownloadImage("TEX" + i + ".png", self.GetDataURIFromWebGLTexture(gl, glTexture, texWidth, texHeight));
+				let texWidth = glTexture.width ? glTexture.width : _window.WEBGLRipperSettings.defaultTexWidth;
+				let texHeight = glTexture.height ? glTexture.height : _window.WEBGLRipperSettings.defaultTexHeight;
+				Downloader.DownloadImage(`TEX${i}.png`, self.GetDataURIFromWebGLTexture(gl, glTexture, texWidth, texHeight, _window.WEBGLRipperSettings.shouldUnFlipTex));
 			}
 
 			self._GLAllTextures = [];
@@ -999,16 +1023,12 @@ class WebGLRipperInterceptor {
 	}
 
 	hooked_enableVertexAttribArray(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/enableVertexAttribArray
-		if (!self._isCapturing)
-			return;
 		let index = args[0];
 
 		self._GLCurrentAttribEnabled[index] = true;
 	}
 
 	hooked_disableVertexAttribArray(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/disableVertexAttribArray
-		if (!self._isCapturing)
-			return;
 		let index = args[0];
 
 		self._GLCurrentAttribEnabled[index] = false;
