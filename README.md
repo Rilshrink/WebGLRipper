@@ -13,7 +13,9 @@ You can then access options by clicking on the icon, and clicking on the 'option
 
 ## Firefox
 
-Currently not available
+Click on the green <> Code Button -> Download the repo as a zip -> Unzip it somewhere safe -> Goto ```about:addons``` -> Debug Add-ons -> Load Temporary Add-on -> Load unzipped directory
+
+You can then access options by clicking on the extensions icon in the top right, clicking the cog wheel and go 'Manage Extension' then click on the 'Options' tab. 
 
 # How to rip?
 

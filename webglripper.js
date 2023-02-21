@@ -155,6 +155,15 @@ class Downloader {
 		document.body.removeChild(a);
 	}
 
+	static async DownloadBlob(filename, blob) {
+		const a = document.createElement("a");
+		a.href = URL.createObjectURL(blob);
+		a.download = filename;
+		document.body.appendChild(a);
+		a.click();
+		document.body.removeChild(a);
+	}
+
 	static DownloadString(filename, str) {
 		var textblob = new Blob([str], { type: 'text/plain' });
 		var link = document.createElement('a');
@@ -190,7 +199,8 @@ _window.WEBGLRipperSettings = {
 	defaultTexHeight: 4096, // As we can't always retrieve the width and height of a texture, we must have a default size in that case.
 	shouldUnFlipTex: true, // If we should unflip the textures
 	isDebug: true, // Debug Printing
-	isDoShaderCalc: false // Force the shader to do calculations, useful for grabbing specific frames of vertex animations.
+	isDoShaderCalc: false, // Force the shader to do calculations, useful for grabbing specific frames of vertex animations.
+	shouldDownloadZip: false // Download all the model assets into a zip file.
 };
 
 let LogToParent = function () {
@@ -209,6 +219,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
 	_window.WEBGLRipperSettings.isDoShaderCalc = settings.do_shader_calc;
 	_window.WEBGLRipperSettings.isDebug = settings.is_debug_mode;
 	_window.WEBGLRipperSettings.shouldUnFlipTex = settings.unflip_textures;
+	_window.WEBGLRipperSettings.shouldDownloadZip = settings.should_download_zip;
 });
 
 document.addEventListener('keydown', function (event) {
@@ -324,7 +335,7 @@ class WebGLRipperInterceptor {
 
 		let imgData = new ImageData(arr, texWidth, texHeight);
 		ctx.putImageData(imgData, 0, 0);
-		return canvas.toDataURL();
+		return canvas.toDataURL("image/png");
 	}
 
 	GetAttribValueType(attrib) {
@@ -946,8 +957,6 @@ class WebGLRipperInterceptor {
 		if (self._CurrentModels.length > 0 && self._isCapturing) {
 			LogToParent(`Downloading ${self._CurrentModels.length}`);
 			let models = self._CurrentModels.slice(); // Create a copy
-			
-			/* TODO: Make downloads async */
 
 			let sleep = function (delay) {
 				var start = new Date().getTime();
@@ -955,35 +964,70 @@ class WebGLRipperInterceptor {
 			};
 
 			// Download each model
+			
+			if(_window.WEBGLRipperSettings.shouldDownloadZip && JSZip) {
+				var zip = new JSZip();
 
-			models.forEach(async function (obj) {
-				Downloader.DownloadString(`${obj.name}.obj`, obj.BuildOBJ());
-				sleep(250);
-				if (obj.textures.length > 0) {
-					Downloader.DownloadString(`${obj.name}.mtl`, obj.BuildMTL());
-				}
-				sleep(150);
-			});
-
-			// Download each texture
-
-			let textures = [];
-			let texcache = [];
-			models.forEach(function (obj) {
-				obj.textures.forEach(function (texture) {
-					if (!texture._URL)
-						return;
-					if (texcache[texture._URL])
-						return;
-					textures.push(texture);
-					texcache[texture._URL] = true;
+				models.forEach(async function (obj) {
+					zip.file(`${obj.name}.obj`, obj.BuildOBJ());
+					zip.file(`${obj.name}.mtl`, obj.BuildMTL());
 				});
-			});
 
-			textures.forEach(async function (texture) {
-				await Downloader.DownloadImage(texture._FILENAME, texture._URL);
-				sleep(250);
-			});
+				let textures = [];
+				let texcache = [];
+				models.forEach(function (obj) {
+					obj.textures.forEach(function (texture) {
+						if (!texture._URL)
+							return;
+						if (texcache[texture._URL])
+							return;
+						textures.push(texture);
+						texcache[texture._URL] = true;
+					});
+				});
+	
+				textures.forEach(async function (texture) {
+					zip.file(`${texture._FILENAME}.png`, texture._URL.replace("data:image/png;base64,", ""), {base64: true});
+				});
+
+				zip.generateAsync({type:"blob"})
+				.then(function(content) {
+					Downloader.DownloadBlob(`${new Date().toISOString()}-rip.zip`, content);
+				});
+
+			} else { // Download all separately 
+
+				/* TODO: Make downloads async */
+
+				models.forEach(async function (obj) {
+					Downloader.DownloadString(`${obj.name}.obj`, obj.BuildOBJ());
+					sleep(250);
+					if (obj.textures.length > 0) {
+						Downloader.DownloadString(`${obj.name}.mtl`, obj.BuildMTL());
+					}
+					sleep(150);
+				});
+	
+				// Download each texture
+	
+				let textures = [];
+				let texcache = [];
+				models.forEach(function (obj) {
+					obj.textures.forEach(function (texture) {
+						if (!texture._URL)
+							return;
+						if (texcache[texture._URL])
+							return;
+						textures.push(texture);
+						texcache[texture._URL] = true;
+					});
+				});
+	
+				textures.forEach(async function (texture) {
+					await Downloader.DownloadImage(texture._FILENAME, texture._URL);
+					sleep(250);
+				});
+			}
 
 			// Reset vars
 
@@ -1002,6 +1046,7 @@ class WebGLRipperInterceptor {
 			self._needsToReset = false;
 		}
 
+		/*
 		if (_window.WEBGLRipperSettings.isCapturingTextures) {
 
 			for (let i = 0; i < self._GLAllTextures.length; i++) {
@@ -1016,6 +1061,7 @@ class WebGLRipperInterceptor {
 			self._GLAllTextures = [];
 			_window.WEBGLRipperSettings.isCapturingTextures = false;
 		}
+		*/
 
 		self._GLCurrentUVS = [];
 		self._GLCurrentNormals = [];

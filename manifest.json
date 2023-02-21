@@ -1,9 +1,7 @@
 {
 	"name": "WebGL Ripper",
 	"description": "Allows you to rip models and textures from WebGL applets",
-	"authors": [
-		{"name": "Rilshrink"}
-	],
+	"author": "Rilshrink",
 	"version": "0.5",
 	"manifest_version": 3,
 	"content_scripts": [
@@ -15,23 +13,27 @@
 		}
 	],
 	"web_accessible_resources": [{
-		"resources": ["webglripper.js"],
+		"resources": ["webglripper.js", "jszip.min.js"],
 		"matches": ["<all_urls>"]
 	}],
-	"options_page": "options.html",
+	"options_ui": {
+		"page": "options.html",
+		"browser_style": true
+	},
 	"icons": {
 		"16": "icon.png",
 		"48": "icon.png",
 		"128": "icon.png"
-	},
-	"browser_action": {
-		"default_icon": "icon.png",
-		"default_title": "WebGL Ripper"
 	},
 	"permissions": [
 		"<all_urls>",
 		"contextMenus",
 		"tabs",
 		"storage"
-	]
+	],
+	"browser_specific_settings": {
+	  "gecko": {
+		"id": "rilshrink@webglripper"
+	  }
+	}
 }
