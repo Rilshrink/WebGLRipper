@@ -347,14 +347,16 @@ class WebGLRipperInterceptor {
 			'avertex',
 			'vertex_position', // Playcanvas.js
 			'aposition', // Playcanvas.js
-			'vPosition', // imvu.com
+			'vposition', // imvu.com
+			'vertexposition', // Raylib
 		];
 		let normalNames = [
 			'avertexnormal',
 			'normal',
 			's_attribute_1',
 			'vertex_normal',   // Playcanvas.js
-			'vNormal', // imvu.com
+			'vnormal', // imvu.com
+			'vertexnormal', // Raylib
 		];
 
 		let uvNames = [
@@ -363,8 +365,9 @@ class WebGLRipperInterceptor {
 			'texcoords',
 			'texcoord0',
 			'atexturecoord',
-			'vertex_texCoord0', // Playcanvas.js
-			'vTexCoord', // imvu.com
+			'vertex_texcoord0', // Playcanvas.js
+			'vtexCoord', // imvu.com
+			'vertextexcoord', // Raylib
 		];
 		let attribName = attrib.name.toLowerCase();
 		if (vertexNames.includes(attribName))
@@ -503,6 +506,11 @@ class WebGLRipperInterceptor {
 
 			if (!self._GLCurrentAttribEnabled[attr.loc])
 				return;
+			let attribType = self.GetAttribValueType(attr);
+			if(attribType == -1) {
+				LogToParent("Unknown Attrib Type: ", attr);
+				return;
+			}
 
 			let _bufferData = self.getBufferDataFromBuffer(self, gl.getVertexAttrib(attr.loc, gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING));
 			if (!_bufferData)
@@ -510,72 +518,36 @@ class WebGLRipperInterceptor {
 			if (_bufferData.byteLength == 0)
 				return;
 
-			let attribType = self.GetAttribValueType(attr);
 			let bufferData = [];
 
 			let vAttribData = self._GLCurrentAttrib[attr.loc];
 			LogToParent("Got vAttribData: ", vAttribData, "Along with attr: ", attr);
+			
+			const SizeArrayMap = {	
+				[gl.BYTE]: 1 * vAttribData.size,
+				[gl.UNSIGNED_BYTE]: 1 * vAttribData.size,
+				[gl.SHORT]: 2 * vAttribData.size,
+				[gl.UNSIGNED_SHORT]: 2 * vAttribData.size,
+				[gl.FLOAT]: 4 * vAttribData.size			
+			};		
 
-			let byteAdvance = 0;
-			switch (vAttribData.type) {
-				case gl.BYTE:
-				case gl.UNSIGNED_BYTE:
-					byteAdvance = 1 * vAttribData.size;
-					break;
-				case gl.SHORT:
-				case gl.UNSIGNED_SHORT:
-					byteAdvance = 2 * vAttribData.size;
-					break;
-				default:
-				case gl.FLOAT:
-					byteAdvance = 4 * vAttribData.size;
-					break;
-			}
+			let byteAdvance = SizeArrayMap[vAttribData.type];
 
 			let fStride = vAttribData.stride ? vAttribData.stride : byteAdvance;
-
-			switch (vAttribData.type) {
-				case gl.BYTE:
-					_bufferData = new Int8Array(_bufferData, 0);
-					break;
-				case gl.UNSIGNED_BYTE:
-					_bufferData = new Uint8Array(_bufferData, 0);
-					break;
-				case gl.SHORT:
-					_bufferData = new Int16Array(_bufferData, 0);
-					break;
-				case gl.UNSIGNED_SHORT:
-					_bufferData = new Uint16Array(_bufferData, 0);
-					break;
-				default:
-				case gl.FLOAT:
-					_bufferData = new Float32Array(_bufferData, 0);
-					break;
-			}
-
-			LogToParent("Final Stride is: ", fStride, ", Buffer byte length: ", _bufferData.byteLength, "Original Buffer Data: ", _bufferData);
-
-			var byteOffset = 0;
+			
+			const TypedArrayMap = {
+			  [gl.BYTE]: Int8Array,
+			  [gl.UNSIGNED_BYTE]: Uint8Array,
+			  [gl.SHORT]: Int16Array,
+			  [gl.UNSIGNED_SHORT]: Uint16Array,
+			  [gl.FLOAT]: Float32Array
+			};
+			const TypedArrayConstructor = TypedArrayMap[vAttribData.type];
+			_bufferData = new TypedArrayConstructor(_bufferData, 0);
+			
+			let byteOffset = 0;
 			while (byteOffset < _bufferData.byteLength) {
-				var readView = null;
-				switch (vAttribData.type) {
-					case gl.BYTE:
-						readView = new Int8Array(_bufferData.buffer.slice(byteOffset));
-						break;
-					case gl.UNSIGNED_BYTE:
-						readView = new Uint8Array(_bufferData.buffer.slice(byteOffset));
-						break;
-					case gl.SHORT:
-						readView = new Int16Array(_bufferData.buffer.slice(byteOffset));
-						break;
-					case gl.UNSIGNED_SHORT:
-						readView = new Uint16Array(_bufferData.buffer.slice(byteOffset));
-						break;
-					default:
-					case gl.FLOAT:
-						readView = new Float32Array(_bufferData.buffer.slice(byteOffset));
-						break;
-				}
+				var readView = new TypedArrayConstructor(_bufferData.buffer.slice(byteOffset, byteOffset + fStride));
 
 				for (let i = 0; i < vAttribData.size; i++) {
 					bufferData.push(readView[i]);
@@ -589,25 +561,9 @@ class WebGLRipperInterceptor {
 				return;
 			}
 
-			switch (vAttribData.type) {
-				case gl.BYTE:
-					bufferData = new Int8Array(bufferData, 0);
-					break;
-				case gl.UNSIGNED_BYTE:
-					bufferData = new Uint8Array(bufferData, 0);
-					break;
-				case gl.SHORT:
-					bufferData = new Int16Array(bufferData, 0);
-					break;
-				case gl.UNSIGNED_SHORT:
-					bufferData = new Uint16Array(bufferData, 0);
-					break;
-				default:
-				case gl.FLOAT:
-					bufferData = new Float32Array(bufferData, 0);
-					break;
-			}
+			bufferData = new TypedArrayConstructor(bufferData, 0);
 
+			LogToParent("Final Stride is: ", fStride, ", Buffer byte length: ", _bufferData.byteLength, "Original Buffer Data: ", _bufferData);
 			LogToParent("Got Attribute Data: ", attr, bufferData);
 
 			switch (attribType) {
