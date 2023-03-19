@@ -48,23 +48,23 @@ const OBJUtils = {
 		}
 	},
 
-	/* Used to store indicies and how to draw them */
+	/* Used to store indices and how to draw them */
 	OBJPrimitive: class {
-		constructor(mode, indicies) {
+		constructor(mode, indices) {
 			this._MODE = mode;
-			this._INDICIES = indicies;
+			this._INDICES = indices;
 		}
 	},
 
 	/* OBJ Creation */
 	OBJModel: class {
 		// Primitives = [] // Array of OBJPrimitive's
-		// Verticies = [] // Array of Verticies
+		// Vertices = [] // Array of Vertices
 		// Normals = [] // Array of Normals
 		// UVs = [] // Array of UVs
 		// Textures = [] // Array of OBJTexture or OBJColTexture for the obj
-		constructor(_Primitives, _Verticies, _Normals, _UVs, _Textures, _Name) {
-			this.vertex = _Verticies;
+		constructor(_Primitives, _Vertices, _Normals, _UVs, _Textures, _Name) {
+			this.vertex = _Vertices;
 			this.normal = _Normals;
 			this.uv = _UVs;
 			this.primitives = _Primitives;
@@ -98,7 +98,7 @@ const OBJUtils = {
 				obj += '\n';
 			} // Write all Texture Coords into the obj file
 
-			obj += `usemtl ${this.name}\n`; // Specify to start using the mtl lib for the indicies below
+			obj += `usemtl ${this.name}\n`; // Specify to start using the mtl lib for the indices below
 			obj += 's on \n';                // Enable Smooth Shading
 
 			let hasNormals = this.normal.length != 0;
@@ -109,14 +109,14 @@ const OBJUtils = {
 				case OBJUtils.DrawModes["TRIANGLES"]:
 				case OBJUtils.DrawModes["TRIANGLE_STRIP"]:
 					let isStrip = (primitive._MODE == OBJUtils.DrawModes["TRIANGLE_STRIP"]);
-					for (let j = 0; j + 2 < primitive._INDICIES.length; !isStrip ? j += 3 : j++) {
+					for (let j = 0; j + 2 < primitive._INDICES.length; !isStrip ? j += 3 : j++) {
 						obj += 'f ';
 						let order = [0, 1, 2];
 						if (isStrip && (j % 2 == 1)) {
 							order = [0, 2, 1];
 						}
 						for (let k = 0; k < 3; ++k) {
-							let faceNumber = primitive._INDICIES[j + order[k]] + 1;
+							let faceNumber = primitive._INDICES[j + order[k]] + 1;
 							obj += faceNumber;
 							if (hasNormals || hasUVs) {
 								obj += '/';
@@ -130,7 +130,7 @@ const OBJUtils = {
 						obj += '\n';
 					}
 					break;
-			} // Write indicies into obj file
+			} // Write indices into obj file
 			return obj;
 		}
 
@@ -191,7 +191,6 @@ let _window = parent.window;
 _window.WEBGLRipperSettings = {
 	// Globals
 	isCapturingScene: false, // Boolean if the scene is to be captured next frame
-	isCapturingTextures: false, // Boolean if the scene is to capture all textures
 	// Settings
 	CaptureSceneKeyCode: 45, // Insert Key
 	CaptureTexturesKeyCode: 45, // Insert Key
@@ -227,18 +226,12 @@ document.addEventListener('keydown', function (event) {
 		_window.WEBGLRipperSettings.isCapturingScene = true;
 		LogToParent("Capturing scene!");
 	}
-	/*
-	if (event.keyCode == _window.WEBGLRipperSettings.CaptureTexturesKeyCode && event.shiftKey) {
-		_window.WEBGLRipperSettings.isCapturingTextures = true;
-		LogToParent("Capturing textures!");
-	}
-	*/
 });
 
 _window.RIPPERS = [];
 _window.MODELS = [];
 
-class WebGLRipperInterceptor {
+class WebGLRipperWrapper {
 	_IsEnabled = true;
 	_IsWebGL2 = false;
 	_GLViewport = { x: 0, y: 0, width: 0, height: 0 };
@@ -389,9 +382,8 @@ class WebGLRipperInterceptor {
 			'bonetexture',
 			'source' // Playcanvas.js
 		];
-		for (let t = 1; t < 32; t++) {
+		for (let t = 1; t < 32; t++) 
 			textureNames.push(`texture${t}`);
-		}
 		LogToParent("Found possible map_kD: ", uniformName);
 		return textureNames.includes(uniformName.toLowerCase());
 	}
@@ -506,8 +498,9 @@ class WebGLRipperInterceptor {
 
 			if (!self._GLCurrentAttribEnabled[attr.loc])
 				return;
+			
 			let attribType = self.GetAttribValueType(attr);
-			if(attribType == -1) {
+			if(attribType < 0) {
 				LogToParent("Unknown Attrib Type: ", attr);
 				return;
 			}
@@ -515,12 +508,19 @@ class WebGLRipperInterceptor {
 			let _bufferData = self.getBufferDataFromBuffer(self, gl.getVertexAttrib(attr.loc, gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING));
 			if (!_bufferData)
 				return;
-			if (_bufferData.byteLength == 0)
+
+			if (_bufferData.byteLength <= 0)
 				return;
 
 			let bufferData = [];
 
 			let vAttribData = self._GLCurrentAttrib[attr.loc];
+			
+			if(vAttribData == null) {
+				LogToParent("Missing attrib data at location: ", attr.loc);
+				return;
+			}
+			
 			LogToParent("Got vAttribData: ", vAttribData, "Along with attr: ", attr);
 			
 			const SizeArrayMap = {	
@@ -542,6 +542,7 @@ class WebGLRipperInterceptor {
 			  [gl.UNSIGNED_SHORT]: Uint16Array,
 			  [gl.FLOAT]: Float32Array
 			};
+
 			const TypedArrayConstructor = TypedArrayMap[vAttribData.type];
 			_bufferData = new TypedArrayConstructor(_bufferData, 0);
 			
@@ -567,15 +568,15 @@ class WebGLRipperInterceptor {
 			LogToParent("Got Attribute Data: ", attr, bufferData);
 
 			switch (attribType) {
-				case 0:
+				case self._AttribTypeEnum.VERTEX:
 					self._GLCurrentVertices = bufferData;
 					self._GLCurrentVertexIndex = attr.loc;
 					break;
-				case 1:
+				case self._AttribTypeEnum.NORMAL:
 					self._GLCurrentNormals = bufferData;
 					self._GLCurrentNormalIndex = attr.loc;
 					break;
-				case 2:
+				case self._AttribTypeEnum.UVS:
 					self._GLCurrentUVS = bufferData;
 					self._GLCurrentUVIndex = attr.loc;
 					break;
@@ -585,6 +586,86 @@ class WebGLRipperInterceptor {
 			}
 		});
 	}
+
+	HelperFunc_PerformRIP(self, gl) {
+		LogToParent(`Downloading ${self._CurrentModels.length}`);
+		let models = self._CurrentModels.slice(); // Create a copy
+
+		// Download each model
+			
+		if(_window.WEBGLRipperSettings.shouldDownloadZip && JSZip) {
+			const zip = new JSZip();
+
+			models.forEach(async function (obj) {
+				zip.file(`${obj.name}.obj`, obj.BuildOBJ());
+				zip.file(`${obj.name}.mtl`, obj.BuildMTL());
+			});
+
+			let textures = [];
+			let texcache = [];
+			models.forEach(function (obj) {
+				obj.textures.forEach(function (texture) {
+					if (!texture._URL)
+						return;
+					if (texcache[texture._URL])
+						return;
+					textures.push(texture);
+					texcache[texture._URL] = true;
+				});
+			});
+	
+			textures.forEach(async function (texture) {
+				zip.file(`${texture._FILENAME}.png`, texture._URL.replace("data:image/png;base64,", ""), {base64: true});
+			});
+
+			zip.generateAsync({type:"blob"}).then(function(content) {
+				let dateString = new Date().toISOString();
+				Downloader.DownloadBlob(`${dateString}-rip.zip`, content);
+			});
+
+		} else { // Download all separately 
+
+			/* TODO: Make downloads async */
+
+			models.forEach(async function (obj) {
+				await Downloader.DownloadString(`${obj.name}.obj`, obj.BuildOBJ());
+				if (obj.textures.length <= 0)
+					return;
+				await Downloader.DownloadString(`${obj.name}.mtl`, obj.BuildMTL());
+			});
+	
+			// Download each texture
+	
+			let textures = [];
+			let texcache = [];
+			models.forEach(function (obj) {
+				obj.textures.forEach(function (texture) {
+					if (!texture._URL)
+						return;
+					if (texcache[texture._URL])
+						return;
+					textures.push(texture);
+					texcache[texture._URL] = true;
+				});
+			});
+	
+			textures.forEach(async function (texture) {
+				await Downloader.DownloadImage(texture._FILENAME, texture._URL);
+			});
+		}
+
+		// Reset vars
+
+		self._isCapturing = false;
+		self._needsToReset = true;
+		self._CurrentModels = [];
+	}
+	
+	HelperFunc_Flush(self, gl) {
+		self._GLCurrentUVS = [];
+		self._GLCurrentNormals = [];
+		self._GLCurrentVertices = [];
+	}	
 
 	HelperFunc_ResetAll(self, gl) {
 		self._TextureCache = new Map();
@@ -606,13 +687,12 @@ class WebGLRipperInterceptor {
 		let target = args[0];
 		if (target != gl.TEXTURE_2D)
 			return;
-		for (let i = 0; i < self._GLAllTextures.length; i++) {
-			let glTex = self._GLAllTextures[i];
-			if (glTex == self._GLCurrentBoundTexture) {
-				glTex.is2DTexture = true;
-			}
-		}
-		//LogToParent("Got a TEXTURE_2D texImage2D call: ", args);
+		self._GLAllTextures.forEach(glTex => {
+			if(glTex == self._GLCurrentBoundTexture) 
+				glTex.is2DTexture = true;		
+		});
+
+		// Attempt to get width and height of texture
 		let pixels = null;
 		switch (args.length) {
 			case 9:
@@ -622,12 +702,19 @@ class WebGLRipperInterceptor {
 				pixels = args[5];
 				break;
 		}
+	
 		if (pixels == null)
 			return;
+
 		let _ArrayBufferView = (new Uint16Array()).constructor.prototype.__proto__.constructor;
 		if ((pixels instanceof _ArrayBufferView))
 			return;
-		if (pixels instanceof ImageData || pixels instanceof HTMLImageElement || pixels instanceof HTMLCanvasElement || pixels instanceof HTMLVideoElement || pixels instanceof ImageBitmap) {
+
+		if (pixels instanceof ImageData || 
+			pixels instanceof HTMLImageElement || 
+			pixels instanceof HTMLCanvasElement || 
+			pixels instanceof HTMLVideoElement || 
+			pixels instanceof ImageBitmap) {
 			self._GLCurrentBoundTexture.width = pixels.width;
 			self._GLCurrentBoundTexture.height = pixels.height;
 		}
@@ -643,10 +730,12 @@ class WebGLRipperInterceptor {
 	hooked_linkProgram(self, gl, args, oFunc) {
 		let program = args[0];
 
-		if (_window.WEBGLRipperSettings.isDoShaderCalc) {
-			gl.transformFeedbackVaryings(program, ["gl_Position"], gl.SEPARATE_ATTRIBS);
-			LogToParent("[ShaderCalc] Added Transform Feedback for gl_Position");
+		if (!_window.WEBGLRipperSettings.isDoShaderCalc) {
+			return;
 		}
+
+		gl.transformFeedbackVaryings(program, ["gl_Position"], gl.SEPARATE_ATTRIBS);
+		LogToParent("[ShaderCalc] Added Transform Feedback for gl_Position");
 	}
 
 	hooked_bindTexture(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/bindTexture
@@ -670,17 +759,23 @@ class WebGLRipperInterceptor {
 		let indFirst = args[1];
 		let indCount = args[2];
 
-		if (drawMode != OBJUtils.DrawModes.TRIANGLES && drawMode != OBJUtils.DrawModes.TRIANGLE_STRIP) {
-			LogToParent("Unsupported draw mode: ", drawMode);
-			return;
+		switch (drawMode) {
+			case OBJUtils.DrawModes.TRIANGLES:
+			case OBJUtils.DrawModes.TRIANGLE_STRIP:
+				break;
+			default:
+				LogToParent("Unsupported draw mode: ", drawMode);
+				return;
 		}
 
 		self.HelperFunc_UpdateAllAttributes(self, gl);
 
-		let textures = self.HelperFunc_GetAllTextures(self, gl);
-
-		if (!self._GLCurrentVertices)
+		if (self._GLCurrentVertices.length <= 0) {
+			LogToParent("Got no vertices in drawArrays call");
 			return;
+		}
+
+		let textures = self.HelperFunc_GetAllTextures(self, gl);
 
 		let indices = [];
 
@@ -699,11 +794,15 @@ class WebGLRipperInterceptor {
 		let builtOBJ = new OBJUtils.OBJModel(objPrimitives, self._GLCurrentVertices, self._GLCurrentNormals, self._GLCurrentUVS, textures, `RIP${objID}`);
 		self._CurrentModels.push(builtOBJ);
 		LogToParent("Finished Building OBJ: ", builtOBJ);
+		
+		// Cleanup
+		self.HelperFunc_Flush(self, gl);
 	}
 
 	hooked_drawElements(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/drawElements
 		if (!self._isCapturing)
 			return;
+		
 		LogToParent("Captured 'drawElements' call: ", args);
 
 		let drawMode = args[0];
@@ -722,103 +821,55 @@ class WebGLRipperInterceptor {
 
 		let oIndices = self.getBufferedIndices(self);
 		if (!oIndices || oIndices == undefined) {
-			LogToParent("No Indicies found in 'drawElements' call");
+			LogToParent("No indices found in 'drawElements' call");
 			return;
 		}
 
 		self.HelperFunc_UpdateAllAttributes(self, gl);
-
-		let indTypeSize = 1;
-		switch (indType) {
-			case gl.UNSIGNED_BYTE:
-				indTypeSize = 1;
-				break;
-			case gl.UNSIGNED_SHORT:
-				indTypeSize = 2;
-				break;
-			case gl.UNSIGNED_INT:
-				indTypeSize = 4;
-				break;
+	
+		if(self._GLCurrentVertices.length <= 0) {
+			LogToParent("Got no vertices in drawElements call");
+			return;
 		}
 
+		const indTypeMap = {
+			[gl.UNSIGNED_BYTE]: 1,
+			[gl.UNSIGNED_SHORT]: 2,
+			[gl.UNSIGNED_INT]: 4
+		};
+
+		let indTypeSize = indTypeMap[indType] || 2; // Usually indices are unsigned shorts so it makes sense to just make it the default
+
 		let _indOffset = indOffset / indTypeSize;
+		
+		const indTypedArrayMap = {
+			[gl.UNSIGNED_BYTE]: Uint8Array,
+			[gl.UNSIGNED_SHORT]: Uint16Array,
+			[gl.UNSIGNED_INT]: Uint32Array
+		};
+		let IndTypedArray = indTypedArrayMap[indType];
 
 		if (oIndices instanceof ArrayBuffer) {
-			switch (indType) {
-				case gl.UNSIGNED_BYTE:
-					oIndices = new Uint8Array(oIndices);
-					break;
-				case gl.UNSIGNED_SHORT:
-					oIndices = new Uint16Array(oIndices);
-					break;
-				case gl.UNSIGNED_INT:
-					oIndices = new Uint32Array(oIndices);
-					break;
-			}
+			oIndices = new IndTypedArray(oIndices);
 		}
 
 		LogToParent("Using indices, size: ", oIndices.length, ", to cut out from ", _indOffset, " to ", _indOffset, " + ", indCount);
-		let indices;
-		switch (indType) {
-			case gl.UNSIGNED_BYTE:
-				indices = new Uint8Array(indCount);
-				break;
-			case gl.UNSIGNED_SHORT:
-				indices = new Uint16Array(indCount);
-				break;
-			case gl.UNSIGNED_INT:
-				indices = new Uint32Array(indCount);
-				break;
-		}
+		let indices = new IndTypedArray(indCount);
 
 		for (let ind = 0; ind < indCount; ind++)
 			indices[ind] = oIndices[_indOffset + ind];
+	
 		LogToParent("New indices size: ", indices.length);
 
-		if (_window.WEBGLRipperSettings.isDoShaderCalc) { /* Just seems to not want to work */
-			/* Setup Area */
-			const feedbackBuffer = gl.createBuffer();
-			gl.bindBuffer(gl.ARRAY_BUFFER, feedbackBuffer);
-			gl.bufferData(gl.ARRAY_BUFFER, self._GLCurrentVertices.length * 4, gl.STATIC_DRAW);
-
-			const tf = gl.createTransformFeedback();
-			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
-			gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, feedbackBuffer);
-			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
-			gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
-
-			const feedbackVertex = gl.createVertexArray();
-			gl.bindVertexArray(feedbackVertex);
-			gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 4, 0);
-			gl.enableVertexAttribArray(feedbackVertex);
-
-			gl.enable(gl.RASTERIZER_DISCARD);
-
-			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
-
-			gl.beginTransformFeedback(drawMode);
-			oFunc.apply(gl, args);
-			gl.endTransformFeedback();
-
-			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
-
-			gl.disable(gl.RASTERIZER_DISCARD);
-
-			const verticiesRaw = new Float32Array(self._GLCurrentVertices.length * 4);
-			gl.bindBuffer(gl.ARRAY_BUFFER, feedbackBuffer);
-			gl.getBufferSubData(gl.ARRAY_BUFFER, 0, verticiesRaw);
-
-			LogToParent("Got transform feedback verts: ", verticiesRaw, feedbackBuffer);
-
-			gl.deleteBuffer(feedbackBuffer);
-
-
-			self._GLCurrentVertices = new Float32Array(self._GLCurrentVertices.length);
-			for (let i = 0; i < indCount; i++) {
-				self._GLCurrentVertices[i * 3 + 0] = verticiesRaw[i * 4 + 0];
-				self._GLCurrentVertices[i * 3 + 1] = verticiesRaw[i * 4 + 1];
-				self._GLCurrentVertices[i * 3 + 2] = verticiesRaw[i * 4 + 2];
-			}
+		if (_window.WEBGLRipperSettings.isDoShaderCalc) { 
+			/*
+				TODO: Fix
+				- Setup transform feedback
+				- Convert triangle strips to triangles
+				- Convert drawElements call to drawArrays call
+					- Must sort vertices inline with indices to pass through
+				- Capture transform feedback 
+			*/
 		}
 
 		let textures = self.HelperFunc_GetAllTextures(self, gl);
@@ -828,6 +879,9 @@ class WebGLRipperInterceptor {
 		let builtOBJ = new OBJUtils.OBJModel(objPrimitives, self._GLCurrentVertices, self._GLCurrentNormals, self._GLCurrentUVS, textures, `RIP${objID}`);
 		self._CurrentModels.push(builtOBJ);
 		LogToParent("Finished Building OBJ: ", builtOBJ);
+		
+		// Cleanup
+		self.HelperFunc_Flush(self, gl);
 
 		if (_window.WEBGLRipperSettings.isDoShaderCalc)
 			return true;
@@ -894,102 +948,28 @@ class WebGLRipperInterceptor {
 				break;
 			default:
 				let maybeData = args[1];
-				let _ArrayBufferView = (new Uint16Array()).constructor.prototype.__proto__.constructor; // https://stackoverflow.com/questions/64650119/react-error-sharedarraybuffer-is-not-defined-in-firefox
-				if (maybeData instanceof ArrayBuffer || (crossOriginIsolated && maybeData instanceof SharedArrayBuffer) || maybeData instanceof _ArrayBufferView) {
+				// https://stackoverflow.com/questions/64650119/react-error-sharedarraybuffer-is-not-defined-in-firefox
+				let _ArrayBufferView = (new Uint16Array()).constructor.prototype.__proto__.constructor; 
+				if (maybeData instanceof ArrayBuffer || 
+				   (crossOriginIsolated && maybeData instanceof SharedArrayBuffer) || 
+					maybeData instanceof _ArrayBufferView) {
 					data = maybeData;
 				}
 				break;
 		}
 
 		let buffer = self._GLState.get(target);
-		if (buffer && data) {
-			self._GLBuffers.set(buffer, data);
+		if (!buffer || !data) {
+			LogToParent("Called buffer data without specifying data: ", args);
 			return;
 		}
-		LogToParent("Called buffer data without specifying data: ", args);
+
+		self._GLBuffers.set(buffer, data);
 	}
 
 	hooked_clear(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/clear
 		if (self._CurrentModels.length > 0 && self._isCapturing) {
-			LogToParent(`Downloading ${self._CurrentModels.length}`);
-			let models = self._CurrentModels.slice(); // Create a copy
-
-			let sleep = function (delay) {
-				var start = new Date().getTime();
-				while (new Date().getTime() < start + delay);
-			};
-
-			// Download each model
-			
-			if(_window.WEBGLRipperSettings.shouldDownloadZip && JSZip) {
-				var zip = new JSZip();
-
-				models.forEach(async function (obj) {
-					zip.file(`${obj.name}.obj`, obj.BuildOBJ());
-					zip.file(`${obj.name}.mtl`, obj.BuildMTL());
-				});
-
-				let textures = [];
-				let texcache = [];
-				models.forEach(function (obj) {
-					obj.textures.forEach(function (texture) {
-						if (!texture._URL)
-							return;
-						if (texcache[texture._URL])
-							return;
-						textures.push(texture);
-						texcache[texture._URL] = true;
-					});
-				});
-	
-				textures.forEach(async function (texture) {
-					zip.file(`${texture._FILENAME}.png`, texture._URL.replace("data:image/png;base64,", ""), {base64: true});
-				});
-
-				zip.generateAsync({type:"blob"})
-				.then(function(content) {
-					Downloader.DownloadBlob(`${new Date().toISOString()}-rip.zip`, content);
-				});
-
-			} else { // Download all separately 
-
-				/* TODO: Make downloads async */
-
-				models.forEach(async function (obj) {
-					Downloader.DownloadString(`${obj.name}.obj`, obj.BuildOBJ());
-					sleep(250);
-					if (obj.textures.length > 0) {
-						Downloader.DownloadString(`${obj.name}.mtl`, obj.BuildMTL());
-					}
-					sleep(150);
-				});
-	
-				// Download each texture
-	
-				let textures = [];
-				let texcache = [];
-				models.forEach(function (obj) {
-					obj.textures.forEach(function (texture) {
-						if (!texture._URL)
-							return;
-						if (texcache[texture._URL])
-							return;
-						textures.push(texture);
-						texcache[texture._URL] = true;
-					});
-				});
-	
-				textures.forEach(async function (texture) {
-					await Downloader.DownloadImage(texture._FILENAME, texture._URL);
-					sleep(250);
-				});
-			}
-
-			// Reset vars
-
-			self._isCapturing = false;
-			self._needsToReset = true;
-			self._CurrentModels = [];
+			self.HelperFunc_PerformRIP(self, gl);
 		}
 
 		if (_window.WEBGLRipperSettings.isCapturingScene && self._IsEnabled) { // Fix Race conditions
@@ -1002,26 +982,7 @@ class WebGLRipperInterceptor {
 			self._needsToReset = false;
 		}
 
-		/*
-		if (_window.WEBGLRipperSettings.isCapturingTextures) {
-
-			for (let i = 0; i < self._GLAllTextures.length; i++) {
-				let glTexture = self._GLAllTextures[i];
-				if (!glTexture.is2DTexture)
-					continue;
-				let texWidth = glTexture.width ? glTexture.width : _window.WEBGLRipperSettings.defaultTexWidth;
-				let texHeight = glTexture.height ? glTexture.height : _window.WEBGLRipperSettings.defaultTexHeight;
-				Downloader.DownloadImage(`TEX${i}.png`, self.GetDataURIFromWebGLTexture(gl, glTexture, texWidth, texHeight, _window.WEBGLRipperSettings.shouldUnFlipTex));
-			}
-
-			self._GLAllTextures = [];
-			_window.WEBGLRipperSettings.isCapturingTextures = false;
-		}
-		*/
-
-		self._GLCurrentUVS = [];
-		self._GLCurrentNormals = [];
-		self._GLCurrentVertices = [];
+		self.HelperFunc_Flush(self, gl);
 	}
 
 	hooked_enableVertexAttribArray(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/enableVertexAttribArray
@@ -1042,9 +1003,9 @@ class WebGLRipperInterceptor {
 		let type = args[2];
 		let stride = args[3];
 		let offset = args[4];
+
 		self._GLCurrentAttrib[index] = { size: size, type: type, stride: stride, offset: offset, normalized: false };
 		self._GLCurrentAttribEnabled[index] = true;
-		//LogToParent("Captured vertexAttribIPointer, ", args);
 	}
 
 	hooked_vertexAttribPointer(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/vertexAttribPointer
@@ -1054,27 +1015,28 @@ class WebGLRipperInterceptor {
 		let normalized = args[3];
 		let stride = args[4];
 		let offset = args[5];
+
 		self._GLCurrentAttrib[index] = { size: size, type: type, stride: stride, offset: offset, normalized: normalized };
 		self._GLCurrentAttribEnabled[index] = true;
-		//LogToParent("Captured vertexAttribPointer, ", args);
 	}
 
 	readUniformData(gl, p) {
 		let uniformData = [];
 		let program = gl.getParameter(gl.CURRENT_PROGRAM);
-		if (program) {
-			let uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
-			for (let j = 0; j < uniformCount; j++) {
-				let info = gl.getActiveUniform(program, j);
-				if (info) {
-					uniformData.push({
-						index: j,
-						name: info.name,
-						size: info.size,
-						type: info.type
-					});
-				}
-			}
+		if(!program)
+			return;
+		
+		let uniformCount = gl.getProgramParameter(program, gl.ACTIVE_UNIFORMS);
+		for (let j = 0; j < uniformCount; j++) {
+			let info = gl.getActiveUniform(program, j);
+			if(!info) 
+				continue;
+			uniformData.push({
+				index: j,
+				name: info.name,
+				size: info.size,
+				type: info.type
+			});
 		}
 		return uniformData;
 	}
@@ -1082,21 +1044,21 @@ class WebGLRipperInterceptor {
 	readAttribData(gl, p) {
 		let attribData = [];
 		let program = gl.getParameter(gl.CURRENT_PROGRAM);
-		if (program) {
-			let attribCount = gl.getProgramParameter(program, gl.ACTIVE_ATTRIBUTES);
-			for (let j = 0; j < attribCount; j++) {
-				let info = gl.getActiveAttrib(program, j);
-				if (info) {
-					let loc = gl.getAttribLocation(program, info.name);
-					attribData.push({
-						index: j,
-						loc: loc,
-						name: info.name,
-						size: info.size,
-						type: info.type
-					});
-				}
-			}
+		if(!program)
+			return;
+		let attribCount = gl.getProgramParameter(program, gl.ACTIVE_ATTRIBUTES);
+		for (let j = 0; j < attribCount; j++) {
+			let info = gl.getActiveAttrib(program, j);
+			if(!info) 
+				continue;
+			let loc = gl.getAttribLocation(program, info.name);
+			attribData.push({
+				index: j,
+				loc: loc,
+				name: info.name,
+				size: info.size,
+				type: info.type
+			});
 		}
 		return attribData;
 	}
@@ -1106,39 +1068,30 @@ class WebGLRipperInterceptor {
 		return index == null ? null : self.getBufferDataFromBuffer(self, index);
 	}
 
-	getCurrentVertexArrayBuffer(self) { // Doesn't ever seem to be used
-		let index = self._GLContext.getParameter(self._GLContext.VERTEX_ARRAY_BINDING);
-		return index == null ? null : self.getBufferDataFromBuffer(self, index);
-	}
-
-	getCurrentArrayBuffer(self) {
-		let index = self._GLContext.getParameter(self._GLContext.ARRAY_BUFFER_BINDING);
-		return index == null ? null : self.getBufferDataFromBuffer(self, index);
-	}
-
 	getBufferDataFromBuffer(self, buffer) {
 		return self._GLBuffers.get(buffer);
 	}
 
 }
 
-let hideHook = function (fn, oFn) { fn.toString = oFn.toString.bind(oFn); } // Just in case the site checks for function modifications through a string check.
+// Just in case the site checks for function modifications through a string check.
+let hideHook = function (fn, oFn) { fn.toString = oFn.toString.bind(oFn); } 
 
-function RegisterGLFunction(_GL, _RipperInterceptor, _Method) {
+function RegisterGLFunction(_GL, _RipperWrapper, _Method) {
 	if (_GL[_Method] == undefined) return;
-	let hookFunc = _RipperInterceptor[`hooked_${_Method}`];
+	let hookFunc = _RipperWrapper[`hooked_${_Method}`];
 	if (!hookFunc) {
-		_RipperInterceptor[`hooked_${_Method}`] = function (self, gl, args) {
+		_RipperWrapper[`hooked_${_Method}`] = function (self, gl, args) {
 			// To prevent errors create a 'fake' method
 			LogToParent(`${_Method}: `, args);
 		};
-		hookFunc = _RipperInterceptor[`hooked_${_Method}`];
+		hookFunc = _RipperWrapper[`hooked_${_Method}`];
 		if (!hookFunc) // If it's still null then idk what to do
 			return;
 	}
 	let originalFunc = _GL[_Method];
 	_GL[_Method] = function () {
-		let rv = hookFunc(_RipperInterceptor, this, arguments, originalFunc);
+		let rv = hookFunc(_RipperWrapper, this, arguments, originalFunc);
 		if (rv)
 			return rv;
 		return originalFunc.apply(this, arguments);
@@ -1169,7 +1122,7 @@ window.HTMLCanvasElement.prototype.getContext = function () {
 		return gl;
 
 	if (!gl._hooked) {
-		let glRipper = new WebGLRipperInterceptor(gl);
+		let glRipper = new WebGLRipperWrapper(gl);
 		glRipper._IsWebGL2 = (arguments[0] == 'webgl2');
 		RegisterGLFunction(gl, glRipper, "clear");
 		RegisterGLFunction(gl, glRipper, "bindBuffer");
