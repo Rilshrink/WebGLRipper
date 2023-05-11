@@ -623,36 +623,61 @@ class WebGLRipperWrapper {
 				Downloader.DownloadBlob(`${dateString}-rip.zip`, content);
 			});
 
-		} else { // Download all separately 
+		} else {
+        function pause(msec) {
+            return new Promise((resolve) => {
+                setTimeout(resolve, msec || 1000);
+            });
+        }
 
-			/* TODO: Make downloads async */
+        async function downloadModel(obj) {
+            await Downloader.DownloadString(`${obj.name}.obj`, obj.BuildOBJ());
+            if (obj.textures.length > 0) {
+                await Downloader.DownloadString(`${obj.name}.mtl`, obj.BuildMTL());
+            }
+        }
 
-			models.forEach(async function (obj) {
-				await Downloader.DownloadString(`${obj.name}.obj`, obj.BuildOBJ());
-				if (obj.textures.length <= 0)
-					return;
-				await Downloader.DownloadString(`${obj.name}.mtl`, obj.BuildMTL());
-			});
-	
-			// Download each texture
-	
-			let textures = [];
-			let texcache = [];
-			models.forEach(function (obj) {
-				obj.textures.forEach(function (texture) {
-					if (!texture._URL)
-						return;
-					if (texcache[texture._URL])
-						return;
-					textures.push(texture);
-					texcache[texture._URL] = true;
-				});
-			});
-	
-			textures.forEach(async function (texture) {
-				await Downloader.DownloadImage(texture._FILENAME, texture._URL);
-			});
-		}
+        async function downloadTexture(texture) {
+            await Downloader.DownloadImage(texture._FILENAME, texture._URL);
+        }
+
+        async function downloadAll(elements, isModel = true) {
+            var count = 0;
+            for (const e of elements) {
+                if (isModel) {
+                    await downloadModel(e);
+                } else {
+                    await downloadTexture(e);
+                }
+
+                if (++count % 5 === 0) {
+                    await pause(1000);
+                    count = 0;
+                }
+            }
+        }
+
+        downloadAll(models).catch((error) => {
+            console.error("An error occurred while downloading models:", error);
+        });
+
+        // Download each texture
+
+        let textures = [];
+        let texcache = [];
+        models.forEach(function (obj) {
+            obj.textures.forEach(function (texture) {
+                if (!texture._URL) return;
+                if (texcache[texture._URL]) return;
+                textures.push(texture);
+                texcache[texture._URL] = true;
+            });
+        });
+
+        downloadAll(textures, false).catch((error) => {
+            console.error("An error occurred while downloading textures:", error);
+        });
+    }
 
 		// Reset vars
 
