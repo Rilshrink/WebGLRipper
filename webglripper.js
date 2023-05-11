@@ -11,13 +11,14 @@ const OBJUtils = {
 
 	/* Used to store a texture for use in OBJModel */
 	OBJTexture: class {
-		constructor(filename, url) {
+		constructor(filename, url, type = "map_Kd") {
 			this._URL = url;
 			this._FILENAME = filename;
+			this._TYPE = type;
 		}
 
 		getTexString() {
-			return `map_Kd ${this._FILENAME}.png`;
+			return `${this._TYPE} ${this._FILENAME}.png`;
 		}
 	},
 
@@ -266,7 +267,6 @@ class WebGLRipperWrapper {
 
 	constructor(gl) {
 		this._GLContext = gl;
-		this._GLState = new Map();
 	}
 
 	GetDataURIFromWebGLTexture(gl, webglTexture, texWidth, texHeight, flip = true) {
@@ -343,6 +343,7 @@ class WebGLRipperWrapper {
 			'vposition', // imvu.com
 			'vertexposition', // Raylib
 		];
+
 		let normalNames = [
 			'avertexnormal',
 			'normal',
@@ -359,9 +360,10 @@ class WebGLRipperWrapper {
 			'texcoord0',
 			'atexturecoord',
 			'vertex_texcoord0', // Playcanvas.js
-			'vtexCoord', // imvu.com
+			'vtexcoord', // imvu.com
 			'vertextexcoord', // Raylib
 		];
+
 		let attribName = attrib.name.toLowerCase();
 		if (vertexNames.includes(attribName))
 			return this._AttribTypeEnum.VERTEX;
@@ -372,20 +374,29 @@ class WebGLRipperWrapper {
 		return -1;
 	}
 
-	IsPossibleTextureUniform(uniformName) {
-		let textureNames = [
-			'map',
-			'usampler',
-			'texture0',
-			'texture',
-			'bonesampler',
-			'bonetexture',
-			'source' // Playcanvas.js
-		];
+	IsPossibleTextureUniform(texname) {
+		const textureMap = new Map();
+	
+		// Diffuse / Ambient
+		textureMap.set('map',         'map_Kd');
+		textureMap.set('usampler',    'map_Kd');
+		textureMap.set('texture0',    'map_Kd');
+		textureMap.set('texture',     'map_Kd');
+		textureMap.set('bonesampler', 'map_Kd');
+		textureMap.set('bonetexture', 'map_Kd');
+		textureMap.set('source',      'map_Kd');
 		for (let t = 1; t < 32; t++) 
-			textureNames.push(`texture${t}`);
-		LogToParent("Found possible map_kD: ", uniformName);
-		return textureNames.includes(uniformName.toLowerCase());
+			textureMap.set(`texture${t}`, 'map_Kd');
+		
+		// Normals
+		textureMap.set('normalmap',   'norm' /* PBR rendering */);
+		
+		if(!textureMap.has(texname.toLowerCase())) {
+			LogToParent("Not a known texture type: ", texname);
+			return null;
+		}
+	
+		return textureMap.get(texname.toLowerCase());
 	}
 
 	HelperFunc_GetCurrentProgram(self, gl) {
@@ -411,7 +422,7 @@ class WebGLRipperWrapper {
 			return;
 		}
 
-		let objTexture = new OBJUtils.OBJTexture("texkd_" + self._CurrentModels.length, uri);
+		let objTexture = new OBJUtils.OBJTexture("tex_" + self._CurrentModels.length, uri);
 		Downloader.DownloadImage(objTexture._FILENAME, objTexture._URL);
 		LogToParent("Recieved texture, Sampler Location: ", loc, ", WebGL Texture Object: ", tex);
 	}
@@ -427,7 +438,8 @@ class WebGLRipperWrapper {
 			if (uniform.type != gl.SAMPLER_2D)
 				return;
 
-			if (!self.IsPossibleTextureUniform(uniform.name))
+			let texType = self.IsPossibleTextureUniform(uniform.name);
+			if (texType === null)
 				return;
 
 			/* Get the sampler location of the texture */
@@ -464,11 +476,14 @@ class WebGLRipperWrapper {
 				LogToParent("Recieved null texture!");
 				return;
 			}
+			
+			// Will not work on http servers :(
+			let texName = crypto.randomUUID();
 
-			let objTexture = new OBJUtils.OBJTexture("Texkd_RIP" + self._CurrentModels.length, uri);
+			let objTexture = new OBJUtils.OBJTexture(texName, uri, texType);
 			self._TextureCache.set(tex, objTexture);
 			textures.push(objTexture);
-			LogToParent("Recieved texture, Sampler Location: ", samplerLocation, ", WebGL Texture Object: ", tex);
+			LogToParent("Recieved texture, Sampler Location: ", samplerLocation, ", WebGL Texture Object: ", tex, ", With texture type: ", texType);
 		});
 
 		return textures;
@@ -506,10 +521,7 @@ class WebGLRipperWrapper {
 			}
 
 			let _bufferData = self.getBufferDataFromBuffer(self, gl.getVertexAttrib(attr.loc, gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING));
-			if (!_bufferData)
-				return;
-
-			if (_bufferData.byteLength <= 0)
+			if (!_bufferData || _bufferData.byteLength <= 0)
 				return;
 
 			let bufferData = [];
@@ -524,30 +536,31 @@ class WebGLRipperWrapper {
 			LogToParent("Got vAttribData: ", vAttribData, "Along with attr: ", attr);
 			
 			const SizeArrayMap = {	
-				[gl.BYTE]: 1 * vAttribData.size,
-				[gl.UNSIGNED_BYTE]: 1 * vAttribData.size,
-				[gl.SHORT]: 2 * vAttribData.size,
+				[gl.BYTE]:           1 * vAttribData.size,
+				[gl.UNSIGNED_BYTE]:  1 * vAttribData.size,
+				[gl.SHORT]:          2 * vAttribData.size,
 				[gl.UNSIGNED_SHORT]: 2 * vAttribData.size,
-				[gl.FLOAT]: 4 * vAttribData.size			
-			};		
+				[gl.FLOAT]:          4 * vAttribData.size			
+			};
 
 			let byteAdvance = SizeArrayMap[vAttribData.type];
+			let typeSize    = byteAdvance / vAttribData.size;
 
 			let fStride = vAttribData.stride ? vAttribData.stride : byteAdvance;
 			
 			const TypedArrayMap = {
-			  [gl.BYTE]: Int8Array,
-			  [gl.UNSIGNED_BYTE]: Uint8Array,
-			  [gl.SHORT]: Int16Array,
+			  [gl.BYTE]:           Int8Array,
+			  [gl.UNSIGNED_BYTE]:  Uint8Array,
+			  [gl.SHORT]:          Int16Array,
 			  [gl.UNSIGNED_SHORT]: Uint16Array,
-			  [gl.FLOAT]: Float32Array
+			  [gl.FLOAT]:          Float32Array
 			};
 
 			const TypedArrayConstructor = TypedArrayMap[vAttribData.type];
-			_bufferData = new TypedArrayConstructor(_bufferData, 0);
+			_bufferData = new TypedArrayConstructor(_bufferData, vAttribData.offset);
 			
 			let byteOffset = 0;
-			while (byteOffset < _bufferData.byteLength) {
+			while (byteOffset <= _bufferData.byteLength) {
 				var readView = new TypedArrayConstructor(_bufferData.buffer.slice(byteOffset, byteOffset + fStride));
 
 				for (let i = 0; i < vAttribData.size; i++) {
@@ -562,10 +575,9 @@ class WebGLRipperWrapper {
 				return;
 			}
 
-			bufferData = new TypedArrayConstructor(bufferData, 0);
+			bufferData = new TypedArrayConstructor(bufferData);
 
-			LogToParent("Final Stride is: ", fStride, ", Buffer byte length: ", _bufferData.byteLength, "Original Buffer Data: ", _bufferData);
-			LogToParent("Got Attribute Data: ", attr, bufferData);
+			LogToParent("Final Stride is: ", fStride, ", Buffer byte length: ", _bufferData.byteLength, "Original Buffer Data: ", _bufferData, "Got New Buffer Data: ", bufferData);
 
 			switch (attribType) {
 				case self._AttribTypeEnum.VERTEX:
@@ -598,6 +610,8 @@ class WebGLRipperWrapper {
 
 			models.forEach(async function (obj) {
 				zip.file(`${obj.name}.obj`, obj.BuildOBJ());
+				if (obj.textures.length <= 0)
+					return;
 				zip.file(`${obj.name}.mtl`, obj.BuildMTL());
 			});
 
@@ -624,60 +638,60 @@ class WebGLRipperWrapper {
 			});
 
 		} else {
-        function pause(msec) {
-            return new Promise((resolve) => {
-                setTimeout(resolve, msec || 1000);
-            });
-        }
+		    function pause(msec) {
+		        return new Promise((resolve) => {
+		            setTimeout(resolve, msec || 1000);
+		        });
+		    }
 
-        async function downloadModel(obj) {
-            await Downloader.DownloadString(`${obj.name}.obj`, obj.BuildOBJ());
-            if (obj.textures.length > 0) {
-                await Downloader.DownloadString(`${obj.name}.mtl`, obj.BuildMTL());
-            }
-        }
+		    async function downloadModel(obj) {
+		        await Downloader.DownloadString(`${obj.name}.obj`, obj.BuildOBJ());
+		        if (obj.textures.length > 0) {
+		            await Downloader.DownloadString(`${obj.name}.mtl`, obj.BuildMTL());
+		        }
+		    }
 
-        async function downloadTexture(texture) {
-            await Downloader.DownloadImage(texture._FILENAME, texture._URL);
-        }
+		    async function downloadTexture(texture) {
+		        await Downloader.DownloadImage(texture._FILENAME, texture._URL);
+		    }
 
-        async function downloadAll(elements, isModel = true) {
-            var count = 0;
-            for (const e of elements) {
-                if (isModel) {
-                    await downloadModel(e);
-                } else {
-                    await downloadTexture(e);
-                }
+		    async function downloadAll(elements, isModel = true) {
+		        var count = 0;
+		        for (const e of elements) {
+		            if (isModel) {
+		                await downloadModel(e);
+		            } else {
+		                await downloadTexture(e);
+		            }
 
-                if (++count % 5 === 0) {
-                    await pause(1000);
-                    count = 0;
-                }
-            }
-        }
+		            if (++count % 5 === 0) {
+		                await pause(1000);
+		                count = 0;
+		            }
+		        }
+		    }
 
-        downloadAll(models).catch((error) => {
-            console.error("An error occurred while downloading models:", error);
-        });
+		    downloadAll(models).catch((error) => {
+		        console.error("An error occurred while downloading models:", error);
+		    });
 
-        // Download each texture
+		    // Download each texture
 
-        let textures = [];
-        let texcache = [];
-        models.forEach(function (obj) {
-            obj.textures.forEach(function (texture) {
-                if (!texture._URL) return;
-                if (texcache[texture._URL]) return;
-                textures.push(texture);
-                texcache[texture._URL] = true;
-            });
-        });
+		    let textures = [];
+		    let texcache = [];
+		    models.forEach(function (obj) {
+		        obj.textures.forEach(function (texture) {
+		            if (!texture._URL) return;
+		            if (texcache[texture._URL]) return;
+		            textures.push(texture);
+		            texcache[texture._URL] = true;
+		        });
+		    });
 
-        downloadAll(textures, false).catch((error) => {
-            console.error("An error occurred while downloading textures:", error);
-        });
-    }
+		    downloadAll(textures, false).catch((error) => {
+		        console.error("An error occurred while downloading textures:", error);
+		    });
+    	}
 
 		// Reset vars
 
@@ -750,6 +764,7 @@ class WebGLRipperWrapper {
 		let source = args[1];
 		if (!shader || !source)
 			return;
+		//LogToParent("Got shader source: ", source);
 	}
 
 	hooked_linkProgram(self, gl, args, oFunc) {
@@ -799,12 +814,59 @@ class WebGLRipperWrapper {
 			LogToParent("Got no vertices in drawArrays call");
 			return;
 		}
+		
+		if(_window.WEBGLRipperSettings.isDoShaderCalc) {
+			/* Setup Area */
+			const feedbackBuffer = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, feedbackBuffer);
+			gl.bufferData(gl.ARRAY_BUFFER, self._GLCurrentVertices.length * 4, gl.STATIC_DRAW);
+
+			const tf = gl.createTransformFeedback();
+			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+			gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, feedbackBuffer);
+			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+			gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+
+			const feedbackVertex = gl.createVertexArray();
+			gl.bindVertexArray(feedbackVertex);
+			gl.vertexAttribPointer(0, 4, gl.FLOAT, false, 4, 0);
+			gl.enableVertexAttribArray(feedbackVertex);
+
+			gl.enable(gl.RASTERIZER_DISCARD);
+
+			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, tf);
+
+			gl.beginTransformFeedback(drawMode);
+			oFunc.apply(gl, args);
+			gl.endTransformFeedback();
+
+			gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+
+			gl.disable(gl.RASTERIZER_DISCARD);
+
+			const verticesRaw = new Float32Array(self._GLCurrentVertices.length * 4);
+			gl.bindBuffer(gl.ARRAY_BUFFER, feedbackBuffer);
+			gl.getBufferSubData(gl.ARRAY_BUFFER, 0, verticesRaw);
+
+			LogToParent("Got transform feedback verts: ", verticesRaw, feedbackBuffer);
+
+			gl.deleteBuffer(feedbackBuffer);
+
+			self._GLCurrentVertices = new Float32Array(self._GLCurrentVertices.length);
+			for (let i = 0; i < indCount; i++) {
+				self._GLCurrentVertices[i * 3 + 0] = verticesRaw[i * 4 + 0];
+				self._GLCurrentVertices[i * 3 + 1] = verticesRaw[i * 4 + 1];
+				self._GLCurrentVertices[i * 3 + 2] = verticesRaw[i * 4 + 2];
+			}
+
+		}
+
 
 		let textures = self.HelperFunc_GetAllTextures(self, gl);
 
 		let indices = [];
 
-		// Go through each position, see if it exists or not and add an indicie to it!
+		// Go through each position, see if it exists or not and add an indice to it!
 		let indice = 0;
 		for (let i = 0; i < self._GLCurrentVertices.length; i += 3) {
 			indices.push(indice++);
@@ -822,6 +884,9 @@ class WebGLRipperWrapper {
 		
 		// Cleanup
 		self.HelperFunc_Flush(self, gl);
+
+		if(_window.WEBGLRipperSettings.isDoShaderCalc)
+			return true;
 	}
 
 	hooked_drawElements(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/drawElements
@@ -830,9 +895,9 @@ class WebGLRipperWrapper {
 		
 		LogToParent("Captured 'drawElements' call: ", args);
 
-		let drawMode = args[0];
-		let indCount = args[1];
-		let indType = args[2];
+		let drawMode  = args[0];
+		let indCount  = args[1];
+		let indType   = args[2];
 		let indOffset = args[3];
 
 		switch (drawMode) {
@@ -858,9 +923,9 @@ class WebGLRipperWrapper {
 		}
 
 		const indTypeMap = {
-			[gl.UNSIGNED_BYTE]: 1,
+			[gl.UNSIGNED_BYTE]:  1,
 			[gl.UNSIGNED_SHORT]: 2,
-			[gl.UNSIGNED_INT]: 4
+			[gl.UNSIGNED_INT]:   4
 		};
 
 		let indTypeSize = indTypeMap[indType] || 2; // Usually indices are unsigned shorts so it makes sense to just make it the default
@@ -868,14 +933,15 @@ class WebGLRipperWrapper {
 		let _indOffset = indOffset / indTypeSize;
 		
 		const indTypedArrayMap = {
-			[gl.UNSIGNED_BYTE]: Uint8Array,
+			[gl.UNSIGNED_BYTE]:  Uint8Array,
 			[gl.UNSIGNED_SHORT]: Uint16Array,
-			[gl.UNSIGNED_INT]: Uint32Array
+			[gl.UNSIGNED_INT]:   Uint32Array
 		};
+
 		let IndTypedArray = indTypedArrayMap[indType];
 
 		if (oIndices instanceof ArrayBuffer) {
-			oIndices = new IndTypedArray(oIndices);
+			oIndices = new IndTypedArray(oIndices.buffer);
 		}
 
 		LogToParent("Using indices, size: ", oIndices.length, ", to cut out from ", _indOffset, " to ", _indOffset, " + ", indCount);
@@ -889,12 +955,35 @@ class WebGLRipperWrapper {
 		if (_window.WEBGLRipperSettings.isDoShaderCalc) { 
 			/*
 				TODO: Fix
-				- Setup transform feedback
-				- Convert triangle strips to triangles
 				- Convert drawElements call to drawArrays call
 					- Must sort vertices inline with indices to pass through
-				- Capture transform feedback 
 			*/
+
+			let drawArraysVertices = [];
+
+			for(let ind = 0; ind < indCount; ind++) {
+				drawArraysVertices[ind] = self._GLCurrentVertices[indices[ind]];		
+			}
+
+			const drawArraysBuffer = gl.createBuffer();
+			gl.bindBuffer(gl.ARRAY_BUFFER, drawArraysBuffer);
+			gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(drawArraysVertices), gl.STATIC_DRAW);
+
+			LogToParent("Converting drawElements to drawArray: ", drawArraysVertices);
+			
+			const numComponents = 1; // pull out 2 values per iteration
+			const type = gl.FLOAT; // the data in the buffer is 32bit floats
+			const normalize = false; // don't normalize
+			const stride = 0; // how many bytes to get from one set of values to the next
+			// 0 = use type and numComponents above
+			const offset = 0; // how many bytes inside the buffer to start from			
+			gl.vertexAttribPointer(self._GLCurrentVertexIndex, numComponents, type, normalize, stride, offset);
+			gl.enableVertexAttribArray(self._GLCurrentVertexIndex);
+			
+			self.HelperFunc_Flush(self, gl);
+			gl.drawArrays(drawMode, 0, indCount);
+		
+			return true;
 		}
 
 		let textures = self.HelperFunc_GetAllTextures(self, gl);
@@ -907,9 +996,6 @@ class WebGLRipperWrapper {
 		
 		// Cleanup
 		self.HelperFunc_Flush(self, gl);
-
-		if (_window.WEBGLRipperSettings.isDoShaderCalc)
-			return true;
 	}
 
 	hooked_drawRangeElements(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext/drawRangeElements
@@ -923,7 +1009,7 @@ class WebGLRipperWrapper {
 		let type = args[4];
 		let offset = args[5];
 
-		LogToParent("Captured unsupported 'hooked_drawRangeElements' call: ", args);
+		LogToParent("Captured unsupported 'drawRangeElements' call: ", args);
 	}
 
 	hooked_drawBuffers(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext/drawBuffers
@@ -955,7 +1041,11 @@ class WebGLRipperWrapper {
 	}
 
 	hooked_createBuffer(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/createBuffer
-
+		
+		let buffer = oFunc.apply(gl, args ? args : []);
+		self._GLBuffers.set(buffer, null);
+		
+		return buffer;
 	}
 
 	hooked_bindBuffer(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/bindBuffer
@@ -988,8 +1078,17 @@ class WebGLRipperWrapper {
 			LogToParent("Called buffer data without specifying data: ", args);
 			return;
 		}
-
 		self._GLBuffers.set(buffer, data);
+	}
+
+	hooked_bufferSubData(self, gl, args, oFunc) {
+		//LogToParent("bufferSubData: ", args);
+
+		if(self._IsWebGL2) {
+			//let 
+		} else {
+
+		}
 	}
 
 	hooked_clear(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/clear
@@ -1043,6 +1142,14 @@ class WebGLRipperWrapper {
 
 		self._GLCurrentAttrib[index] = { size: size, type: type, stride: stride, offset: offset, normalized: normalized };
 		self._GLCurrentAttribEnabled[index] = true;
+	}
+
+	hooked_vertexAttribDivisor(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGL2RenderingContext/vertexAttribDivisor
+		
+	}
+
+	hooked_vertexAttribDivisorANGLE(self, gl, args, oFunc) {
+
 	}
 
 	readUniformData(gl, p) {
@@ -1152,6 +1259,7 @@ window.HTMLCanvasElement.prototype.getContext = function () {
 		RegisterGLFunction(gl, glRipper, "clear");
 		RegisterGLFunction(gl, glRipper, "bindBuffer");
 		RegisterGLFunction(gl, glRipper, "bufferData");
+		RegisterGLFunction(gl, glRipper, "bufferSubData"); // omg
 		RegisterGLFunction(gl, glRipper, "createBuffer");
 		RegisterGLFunction(gl, glRipper, "drawArrays");
 		RegisterGLFunction(gl, glRipper, "drawElements");
@@ -1162,6 +1270,8 @@ window.HTMLCanvasElement.prototype.getContext = function () {
 		RegisterGLFunction(gl, glRipper, "vertexAttribIPointer");
 		RegisterGLFunction(gl, glRipper, "enableVertexAttribArray");
 		RegisterGLFunction(gl, glRipper, "disableVertexAttribArray");
+		RegisterGLFunction(gl, glRipper, "vertexAttribDivisor");
+		RegisterGLFunction(gl, glRipper, "vertexAttribDivisorANGLE");
 		RegisterGLFunction(gl, glRipper, "shaderSource");
 		RegisterGLFunction(gl, glRipper, "activeTexture");
 		RegisterGLFunction(gl, glRipper, "bindTexture");
