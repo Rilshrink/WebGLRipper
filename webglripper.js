@@ -229,8 +229,20 @@ document.addEventListener('keydown', function (event) {
 	}
 });
 
+function resizeArrayBuffer(originalBuffer, newByteSize) {
+	if(originalBuffer.byteLength > newByteSize){
+		throw new Error("Can't resize to a smaller array");
+	}
+	const resizedBuffer = new ArrayBuffer(newByteSize);
+	const originalView = new Uint8Array(originalBuffer);
+	const resizedView = new Uint8Array(resizedBuffer);
+	resizedView.set(originalView);
+	return resizedBuffer;
+  }
+  
+  
+
 _window.RIPPERS = [];
-_window.MODELS = [];
 
 class WebGLRipperWrapper {
 	_IsEnabled = true;
@@ -508,21 +520,24 @@ class WebGLRipperWrapper {
 
 	HelperFunc_UpdateAllAttributes(self, gl) { // Got help from: https://github.com/benvanik/WebGL-Inspector/blob/c5f961dba261cbd94d9b3ff3ddbaf8b7d3bf5ef9/core/ui/shared/BufferPreview.js#L191
 		let attribData = self.readAttribData(gl);
-
+		LogToParent("attribData: ", attribData);
 		attribData.forEach(function (attr) {
 
 			if (!self._GLCurrentAttribEnabled[attr.loc])
 				return;
 			
 			let attribType = self.GetAttribValueType(attr);
+			LogToParent("attribType: ", attribType);
 			if(attribType < 0) {
 				LogToParent("Unknown Attrib Type: ", attr);
 				return;
 			}
 
 			let _bufferData = self.getBufferDataFromBuffer(self, gl.getVertexAttrib(attr.loc, gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING));
-			if (!_bufferData || _bufferData.byteLength <= 0)
+			if (!_bufferData || _bufferData.byteLength <= 0){
+				LogToParent("Empty bufferData! was ", _bufferData);
 				return;
+			}
 
 			let bufferData = [];
 
@@ -557,11 +572,10 @@ class WebGLRipperWrapper {
 			};
 
 			const TypedArrayConstructor = TypedArrayMap[vAttribData.type];
-			_bufferData = new TypedArrayConstructor(_bufferData, vAttribData.offset);
 			
-			let byteOffset = 0;
+			let byteOffset = vAttribData.offset;
 			while (byteOffset <= _bufferData.byteLength) {
-				var readView = new TypedArrayConstructor(_bufferData.buffer.slice(byteOffset, byteOffset + fStride));
+				var readView = new TypedArrayConstructor(_bufferData.slice(byteOffset, byteOffset + fStride));
 
 				for (let i = 0; i < vAttribData.size; i++) {
 					bufferData.push(readView[i]);
@@ -941,7 +955,7 @@ class WebGLRipperWrapper {
 		let IndTypedArray = indTypedArrayMap[indType];
 
 		if (oIndices instanceof ArrayBuffer) {
-			oIndices = new IndTypedArray(oIndices.buffer);
+			oIndices = new IndTypedArray(oIndices);
 		}
 
 		LogToParent("Using indices, size: ", oIndices.length, ", to cut out from ", _indOffset, " to ", _indOffset, " + ", indCount);
@@ -1069,6 +1083,9 @@ class WebGLRipperWrapper {
 				   (crossOriginIsolated && maybeData instanceof SharedArrayBuffer) || 
 					maybeData instanceof _ArrayBufferView) {
 					data = maybeData;
+				} else if (!isNaN(maybeData)) {
+					let newBufSize = maybeData;
+					data = new ArrayBuffer(newBufSize);
 				}
 				break;
 		}
@@ -1082,13 +1099,44 @@ class WebGLRipperWrapper {
 	}
 
 	hooked_bufferSubData(self, gl, args, oFunc) {
-		//LogToParent("bufferSubData: ", args);
-
-		if(self._IsWebGL2) {
-			//let 
-		} else {
-
+		LogToParent("bufferSubData: ", args);
+		let target = args[0];
+		let offset = args[1];
+		let srcData = args[2];
+		if (!srcData) {
+			LogToParent("No data specified: ", args);
+			return;
 		}
+		if (!(srcData instanceof ArrayBuffer)){
+			srcData = srcData.buffer;
+		}
+		
+		let newLen = offset+srcData.byteLength;
+
+		let buffer = self._GLState.get(target);
+		if (!buffer) {
+			LogToParent("No such buffer: ", args);
+			return;
+		}
+		let dstData = self._GLBuffers.get(buffer);
+		if (dstData == null){
+			LogToParent("Creating a new buffer of length ", newLen);
+			dstData = new ArrayBuffer(newLen, true);
+			self._GLBuffers.set(buffer, dstData);
+		}
+		if (!(dstData instanceof ArrayBuffer)){
+			dstData = dstData.buffer;
+			LogToParent("Turned dst into buffer ", dstData);
+		}
+		if (dstData.byteLength < newLen){
+			LogToParent("Resizing buffer to length ", newLen);
+			dstData = resizeArrayBuffer(dstData, newLen);
+			self._GLBuffers.set(buffer, dstData);
+		}
+		let dstView = new Uint8Array(dstData);
+		let srcView = new Uint8Array(srcData);
+		dstView.set(srcView, offset);
+	
 	}
 
 	hooked_clear(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/clear
