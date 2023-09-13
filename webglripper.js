@@ -1,3 +1,22 @@
+// https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/Matrix_math_for_the_web
+function multiplyMatrixAndPoint(matrix, point) {
+	let c0r0 = matrix[0], c1r0 = matrix[1], c2r0 = matrix[2], c3r0 = matrix[3];
+	let c0r1 = matrix[4], c1r1 = matrix[5], c2r1 = matrix[6], c3r1 = matrix[7];
+	let c0r2 = matrix[8], c1r2 = matrix[9], c2r2 = matrix[10], c3r2 = matrix[11];
+	let c0r3 = matrix[12], c1r3 = matrix[13], c2r3 = matrix[14], c3r3 = matrix[15];
+  
+	let x = point[0];
+	let y = point[1];
+	let z = point[2];
+	let w = 1;
+  
+	let resultX = x * c0r0 + y * c0r1 + z * c0r2 + w * c0r3;
+	let resultY = x * c1r0 + y * c1r1 + z * c1r2 + w * c1r3;
+	let resultZ = x * c2r0 + y * c2r1 + z * c2r2 + w * c2r3;
+	return [resultX, resultY, resultZ];
+  }
+  
+
 const OBJUtils = {
 	DrawModes: {
 		"POINTS": 0,
@@ -71,6 +90,17 @@ const OBJUtils = {
 			this.primitives = _Primitives;
 			this.textures = _Textures;
 			this.name = _Name || `rip${Math.random()}`;
+		}
+
+		transform(matrix) {
+			LogToParent("Transforming vertices: ", this.vertex.length/3);
+			for (let vI = 0; vI < this.vertex.length; vI += 3) {
+				let v = [this.vertex[vI + 0], this.vertex[vI + 1], this.vertex[vI + 2]];
+				let transformed = multiplyMatrixAndPoint(matrix, v);
+				this.vertex[vI + 0] = transformed[0];
+				this.vertex[vI + 1] = transformed[1];
+				this.vertex[vI + 2] = transformed[2];
+			}
 		}
 
 		BuildOBJ() {
@@ -437,6 +467,22 @@ class WebGLRipperWrapper {
 		let objTexture = new OBJUtils.OBJTexture("tex_" + self._CurrentModels.length, uri);
 		Downloader.DownloadImage(objTexture._FILENAME, objTexture._URL);
 		LogToParent("Recieved texture, Sampler Location: ", loc, ", WebGL Texture Object: ", tex);
+	}
+
+	HelperFunc_GetModelMatrix(self, gl) {
+		let uniformData = self.readUniformData(gl);
+		LogToParent("Current Uniform Data: ", uniformData);
+
+		let _CurrentProgram = self.HelperFunc_GetCurrentProgram(self, gl);
+		let modelMatrix = null;
+		uniformData.forEach(uniform => {
+			if (uniform.name == "modelMatrix") {
+				var loc = gl.getUniformLocation(_CurrentProgram, uniform.name);
+				modelMatrix = gl.getUniform(_CurrentProgram, loc);
+				LogToParent("Recieved modelMatrix: ", modelMatrix);
+			}
+		});
+		return modelMatrix;
 	}
 
 	HelperFunc_GetAllTextures(self, gl) {
@@ -877,6 +923,7 @@ class WebGLRipperWrapper {
 
 
 		let textures = self.HelperFunc_GetAllTextures(self, gl);
+		let modelMatrix = self.HelperFunc_GetModelMatrix(self, gl);
 
 		let indices = [];
 
@@ -893,6 +940,9 @@ class WebGLRipperWrapper {
 		let objPrimitives = new OBJUtils.OBJPrimitive(drawMode, indices);
 		let objID = self._CurrentModels.length;
 		let builtOBJ = new OBJUtils.OBJModel(objPrimitives, self._GLCurrentVertices, self._GLCurrentNormals, self._GLCurrentUVS, textures, `RIP${objID}`);
+		if (modelMatrix){
+			builtOBJ.transform(modelMatrix);
+		}
 		self._CurrentModels.push(builtOBJ);
 		LogToParent("Finished Building OBJ: ", builtOBJ);
 		
@@ -1001,10 +1051,14 @@ class WebGLRipperWrapper {
 		}
 
 		let textures = self.HelperFunc_GetAllTextures(self, gl);
+		let modelMatrix = self.HelperFunc_GetModelMatrix(self, gl);
 
 		let objPrimitives = new OBJUtils.OBJPrimitive(drawMode, indices);
 		let objID = self._CurrentModels.length;
 		let builtOBJ = new OBJUtils.OBJModel(objPrimitives, self._GLCurrentVertices, self._GLCurrentNormals, self._GLCurrentUVS, textures, `RIP${objID}`);
+		if (modelMatrix){
+			builtOBJ.transform(modelMatrix);
+		}
 		self._CurrentModels.push(builtOBJ);
 		LogToParent("Finished Building OBJ: ", builtOBJ);
 		
@@ -1126,7 +1180,6 @@ class WebGLRipperWrapper {
 		}
 		if (!(dstData instanceof ArrayBuffer)){
 			dstData = dstData.buffer;
-			LogToParent("Turned dst into buffer ", dstData);
 		}
 		if (dstData.byteLength < newLen){
 			LogToParent("Resizing buffer to length ", newLen);
