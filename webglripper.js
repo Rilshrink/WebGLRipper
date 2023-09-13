@@ -724,10 +724,7 @@ class WebGLRipperWrapper {
 		                await downloadTexture(e);
 		            }
 
-		            if (++count % 5 === 0) {
-		                await pause(1000);
-		                count = 0;
-		            }
+		            await pause(500); // Pause to not overload the browser in case of big scenes
 		        }
 		    }
 
