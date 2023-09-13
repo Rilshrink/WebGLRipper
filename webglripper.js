@@ -216,7 +216,7 @@ class Downloader {
 	}
 } // Downloader Class
 
-let _window = parent.window;
+let _window = window;
 
 // Create config object
 _window.WEBGLRipperSettings = {
