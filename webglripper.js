@@ -584,7 +584,9 @@ class WebGLRipperWrapper {
 				LogToParent("Empty bufferData! was ", _bufferData);
 				return;
 			}
-
+			if (!(_bufferData instanceof ArrayBuffer)){
+				_bufferData = _bufferData.buffer;
+			}
 			let bufferData = [];
 
 			let vAttribData = self._GLCurrentAttrib[attr.loc];
@@ -1097,6 +1099,8 @@ class WebGLRipperWrapper {
 		let instanceCount = args[4];
 
 		LogToParent("Captured unsupported 'drawElementsInstanced' call: ", args);
+		LogToParent("Forwarding to 'drawElements'...");
+		self.hooked_drawElements(self, gl, args, oFunc);
 	}
 
 	hooked_createTexture(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/createTexture
