@@ -476,7 +476,7 @@ class WebGLRipperWrapper {
 		let _CurrentProgram = self.HelperFunc_GetCurrentProgram(self, gl);
 		let modelMatrix = null;
 		uniformData.forEach(uniform => {
-			if (uniform.name == "modelMatrix") {
+			if (["modelMatrix", "world"].includes(uniform.name) ) {
 				var loc = gl.getUniformLocation(_CurrentProgram, uniform.name);
 				modelMatrix = gl.getUniform(_CurrentProgram, loc);
 				LogToParent("Recieved modelMatrix: ", modelMatrix);
@@ -1154,7 +1154,7 @@ class WebGLRipperWrapper {
 	}
 
 	hooked_bufferSubData(self, gl, args, oFunc) {
-		LogToParent("bufferSubData: ", args);
+		//LogToParent("bufferSubData: ", args);
 		let target = args[0];
 		let offset = args[1];
 		let srcData = args[2];
