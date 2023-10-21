@@ -1,3 +1,22 @@
+// https://developer.mozilla.org/en-US/docs/Web/API/WebGL_API/Matrix_math_for_the_web
+function multiplyMatrixAndPoint(matrix, point) {
+	let c0r0 = matrix[0], c1r0 = matrix[1], c2r0 = matrix[2], c3r0 = matrix[3];
+	let c0r1 = matrix[4], c1r1 = matrix[5], c2r1 = matrix[6], c3r1 = matrix[7];
+	let c0r2 = matrix[8], c1r2 = matrix[9], c2r2 = matrix[10], c3r2 = matrix[11];
+	let c0r3 = matrix[12], c1r3 = matrix[13], c2r3 = matrix[14], c3r3 = matrix[15];
+  
+	let x = point[0];
+	let y = point[1];
+	let z = point[2];
+	let w = 1;
+  
+	let resultX = x * c0r0 + y * c0r1 + z * c0r2 + w * c0r3;
+	let resultY = x * c1r0 + y * c1r1 + z * c1r2 + w * c1r3;
+	let resultZ = x * c2r0 + y * c2r1 + z * c2r2 + w * c2r3;
+	return [resultX, resultY, resultZ];
+  }
+  
+
 const OBJUtils = {
 	DrawModes: {
 		"POINTS": 0,
@@ -71,6 +90,17 @@ const OBJUtils = {
 			this.primitives = _Primitives;
 			this.textures = _Textures;
 			this.name = _Name || `rip${Math.random()}`;
+		}
+
+		transform(matrix) {
+			LogToParent("Transforming vertices: ", this.vertex.length/3);
+			for (let vI = 0; vI < this.vertex.length; vI += 3) {
+				let v = [this.vertex[vI + 0], this.vertex[vI + 1], this.vertex[vI + 2]];
+				let transformed = multiplyMatrixAndPoint(matrix, v);
+				this.vertex[vI + 0] = transformed[0];
+				this.vertex[vI + 1] = transformed[1];
+				this.vertex[vI + 2] = transformed[2];
+			}
 		}
 
 		BuildOBJ() {
@@ -186,7 +216,7 @@ class Downloader {
 	}
 } // Downloader Class
 
-let _window = parent.window;
+let _window = window;
 
 // Create config object
 _window.WEBGLRipperSettings = {
@@ -229,8 +259,20 @@ document.addEventListener('keydown', function (event) {
 	}
 });
 
+function resizeArrayBuffer(originalBuffer, newByteSize) {
+	if(originalBuffer.byteLength > newByteSize){
+		throw new Error("Can't resize to a smaller array");
+	}
+	const resizedBuffer = new ArrayBuffer(newByteSize);
+	const originalView = new Uint8Array(originalBuffer);
+	const resizedView = new Uint8Array(resizedBuffer);
+	resizedView.set(originalView);
+	return resizedBuffer;
+  }
+  
+  
+
 _window.RIPPERS = [];
-_window.MODELS = [];
 
 class WebGLRipperWrapper {
 	_IsEnabled = true;
@@ -427,6 +469,22 @@ class WebGLRipperWrapper {
 		LogToParent("Recieved texture, Sampler Location: ", loc, ", WebGL Texture Object: ", tex);
 	}
 
+	HelperFunc_GetModelMatrix(self, gl) {
+		let uniformData = self.readUniformData(gl);
+		LogToParent("Current Uniform Data: ", uniformData);
+
+		let _CurrentProgram = self.HelperFunc_GetCurrentProgram(self, gl);
+		let modelMatrix = null;
+		uniformData.forEach(uniform => {
+			if (["modelMatrix", "world"].includes(uniform.name) ) {
+				var loc = gl.getUniformLocation(_CurrentProgram, uniform.name);
+				modelMatrix = gl.getUniform(_CurrentProgram, loc);
+				LogToParent("Recieved modelMatrix: ", modelMatrix);
+			}
+		});
+		return modelMatrix;
+	}
+
 	HelperFunc_GetAllTextures(self, gl) {
 		let textures = [];
 		let uniformData = self.readUniformData(gl);
@@ -508,22 +566,27 @@ class WebGLRipperWrapper {
 
 	HelperFunc_UpdateAllAttributes(self, gl) { // Got help from: https://github.com/benvanik/WebGL-Inspector/blob/c5f961dba261cbd94d9b3ff3ddbaf8b7d3bf5ef9/core/ui/shared/BufferPreview.js#L191
 		let attribData = self.readAttribData(gl);
-
+		LogToParent("attribData: ", attribData);
 		attribData.forEach(function (attr) {
 
 			if (!self._GLCurrentAttribEnabled[attr.loc])
 				return;
 			
 			let attribType = self.GetAttribValueType(attr);
+			LogToParent("attribType: ", attribType);
 			if(attribType < 0) {
 				LogToParent("Unknown Attrib Type: ", attr);
 				return;
 			}
 
 			let _bufferData = self.getBufferDataFromBuffer(self, gl.getVertexAttrib(attr.loc, gl.VERTEX_ATTRIB_ARRAY_BUFFER_BINDING));
-			if (!_bufferData || _bufferData.byteLength <= 0)
+			if (!_bufferData || _bufferData.byteLength <= 0){
+				LogToParent("Empty bufferData! was ", _bufferData);
 				return;
-
+			}
+			if (!(_bufferData instanceof ArrayBuffer)){
+				_bufferData = _bufferData.buffer;
+			}
 			let bufferData = [];
 
 			let vAttribData = self._GLCurrentAttrib[attr.loc];
@@ -557,11 +620,10 @@ class WebGLRipperWrapper {
 			};
 
 			const TypedArrayConstructor = TypedArrayMap[vAttribData.type];
-			_bufferData = new TypedArrayConstructor(_bufferData, vAttribData.offset);
 			
-			let byteOffset = 0;
+			let byteOffset = vAttribData.offset;
 			while (byteOffset <= _bufferData.byteLength) {
-				var readView = new TypedArrayConstructor(_bufferData.buffer.slice(byteOffset, byteOffset + fStride));
+				var readView = new TypedArrayConstructor(_bufferData.slice(byteOffset, byteOffset + fStride));
 
 				for (let i = 0; i < vAttribData.size; i++) {
 					bufferData.push(readView[i]);
@@ -664,10 +726,7 @@ class WebGLRipperWrapper {
 		                await downloadTexture(e);
 		            }
 
-		            if (++count % 5 === 0) {
-		                await pause(1000);
-		                count = 0;
-		            }
+		            await pause(500); // Pause to not overload the browser in case of big scenes
 		        }
 		    }
 
@@ -863,6 +922,7 @@ class WebGLRipperWrapper {
 
 
 		let textures = self.HelperFunc_GetAllTextures(self, gl);
+		let modelMatrix = self.HelperFunc_GetModelMatrix(self, gl);
 
 		let indices = [];
 
@@ -879,6 +939,9 @@ class WebGLRipperWrapper {
 		let objPrimitives = new OBJUtils.OBJPrimitive(drawMode, indices);
 		let objID = self._CurrentModels.length;
 		let builtOBJ = new OBJUtils.OBJModel(objPrimitives, self._GLCurrentVertices, self._GLCurrentNormals, self._GLCurrentUVS, textures, `RIP${objID}`);
+		if (modelMatrix){
+			builtOBJ.transform(modelMatrix);
+		}
 		self._CurrentModels.push(builtOBJ);
 		LogToParent("Finished Building OBJ: ", builtOBJ);
 		
@@ -941,7 +1004,7 @@ class WebGLRipperWrapper {
 		let IndTypedArray = indTypedArrayMap[indType];
 
 		if (oIndices instanceof ArrayBuffer) {
-			oIndices = new IndTypedArray(oIndices.buffer);
+			oIndices = new IndTypedArray(oIndices);
 		}
 
 		LogToParent("Using indices, size: ", oIndices.length, ", to cut out from ", _indOffset, " to ", _indOffset, " + ", indCount);
@@ -987,10 +1050,14 @@ class WebGLRipperWrapper {
 		}
 
 		let textures = self.HelperFunc_GetAllTextures(self, gl);
+		let modelMatrix = self.HelperFunc_GetModelMatrix(self, gl);
 
 		let objPrimitives = new OBJUtils.OBJPrimitive(drawMode, indices);
 		let objID = self._CurrentModels.length;
 		let builtOBJ = new OBJUtils.OBJModel(objPrimitives, self._GLCurrentVertices, self._GLCurrentNormals, self._GLCurrentUVS, textures, `RIP${objID}`);
+		if (modelMatrix){
+			builtOBJ.transform(modelMatrix);
+		}
 		self._CurrentModels.push(builtOBJ);
 		LogToParent("Finished Building OBJ: ", builtOBJ);
 		
@@ -1032,6 +1099,8 @@ class WebGLRipperWrapper {
 		let instanceCount = args[4];
 
 		LogToParent("Captured unsupported 'drawElementsInstanced' call: ", args);
+		LogToParent("Forwarding to 'drawElements'...");
+		self.hooked_drawElements(self, gl, args, oFunc);
 	}
 
 	hooked_createTexture(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/createTexture
@@ -1069,6 +1138,9 @@ class WebGLRipperWrapper {
 				   (crossOriginIsolated && maybeData instanceof SharedArrayBuffer) || 
 					maybeData instanceof _ArrayBufferView) {
 					data = maybeData;
+				} else if (!isNaN(maybeData)) {
+					let newBufSize = maybeData;
+					data = new ArrayBuffer(newBufSize);
 				}
 				break;
 		}
@@ -1083,12 +1155,42 @@ class WebGLRipperWrapper {
 
 	hooked_bufferSubData(self, gl, args, oFunc) {
 		//LogToParent("bufferSubData: ", args);
-
-		if(self._IsWebGL2) {
-			//let 
-		} else {
-
+		let target = args[0];
+		let offset = args[1];
+		let srcData = args[2];
+		if (!srcData) {
+			LogToParent("No data specified: ", args);
+			return;
 		}
+		if (!(srcData instanceof ArrayBuffer)){
+			srcData = srcData.buffer;
+		}
+		
+		let newLen = offset+srcData.byteLength;
+
+		let buffer = self._GLState.get(target);
+		if (!buffer) {
+			LogToParent("No such buffer: ", args);
+			return;
+		}
+		let dstData = self._GLBuffers.get(buffer);
+		if (dstData == null){
+			LogToParent("Creating a new buffer of length ", newLen);
+			dstData = new ArrayBuffer(newLen, true);
+			self._GLBuffers.set(buffer, dstData);
+		}
+		if (!(dstData instanceof ArrayBuffer)){
+			dstData = dstData.buffer;
+		}
+		if (dstData.byteLength < newLen){
+			LogToParent("Resizing buffer to length ", newLen);
+			dstData = resizeArrayBuffer(dstData, newLen);
+			self._GLBuffers.set(buffer, dstData);
+		}
+		let dstView = new Uint8Array(dstData);
+		let srcView = new Uint8Array(srcData);
+		dstView.set(srcView, offset);
+	
 	}
 
 	hooked_clear(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/clear
