@@ -2,7 +2,7 @@
 	"name": "WebGL Ripper",
 	"description": "Allows you to rip models and textures from WebGL applets",
 	"author": "Rilshrink",
-	"version": "0.5",
+	"version": "0.6",
 	"manifest_version": 3,
 	"content_scripts": [
 		{
