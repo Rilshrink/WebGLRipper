@@ -6,9 +6,11 @@
 		do_shader_calc: false,
 		is_debug_mode: true,
 		unflip_textures: true,
-		should_download_zip: false
+		should_download_zip: false,
+		minimum_clears: 0
 	}, function(items) {
-		let hiddenSettings = document.createElement("p");
+
+		let hiddenSettings = document.createElement("div");
 		hiddenSettings.id = "webgl_ripper_settings";
 		hiddenSettings.textContent = JSON.stringify(items);
 		hiddenSettings.hidden = true;
@@ -20,6 +22,7 @@
 			s.onload = function () { this.remove(); };
 			(document.head || document.documentElement).appendChild(s);
 		}
+
 	}); // Add settings before WebGL Ripper Script
 
 	let s = document.createElement('script');

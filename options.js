@@ -1,6 +1,7 @@
 // Saves options to chrome.storage
 function save_options() {
   let defaultTextureRes = document.getElementById('ripper_defaulttexres').value;
+  let minimumClears = document.getElementById('ripper_minimumclears').value;
   let shadercalc = document.getElementById('ripper_shadercalc').checked;
   let debugmode = document.getElementById('ripper_debug').checked;
   let unfliptex = document.getElementById('ripper_shouldfliptextures').checked;
@@ -10,7 +11,8 @@ function save_options() {
     do_shader_calc: shadercalc,
     is_debug_mode: debugmode,
     unflip_textures: unfliptex,
-    should_download_zip: downloadzip
+    should_download_zip: downloadzip,
+    minimum_clears: minimumClears
   }, function() {
     // Update status to let user know options were saved.
     var status = document.getElementById('status');
@@ -29,13 +31,15 @@ function restore_options() {
     do_shader_calc: false,
     is_debug_mode: false,
     unflip_textures: true,
-    should_download_zip: false
+    should_download_zip: false,
+    minimum_clears: 1
   }, function(items) {
     document.getElementById('ripper_defaulttexres').value = items.default_texture_res;
     document.getElementById('ripper_shadercalc').checked = items.do_shader_calc;
     document.getElementById('ripper_debug').checked = items.is_debug_mode;
     document.getElementById('ripper_shouldfliptextures').checked = items.unflip_textures;
     document.getElementById('ripper_downloadzip').checked = items.should_download_zip;
+    document.getElementById('ripper_minimumclears').value = items.minimum_clears;
   });
 }
 

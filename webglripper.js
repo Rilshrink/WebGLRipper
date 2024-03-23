@@ -229,6 +229,7 @@ document.addEventListener("DOMContentLoaded", function(event) {
 	_window.WEBGLRipperSettings.isDebug = settings.is_debug_mode;
 	_window.WEBGLRipperSettings.shouldUnFlipTex = settings.unflip_textures;
 	_window.WEBGLRipperSettings.shouldDownloadZip = settings.should_download_zip;
+	_window.WEBGLRipperSettings.minimumClears = parseInt(settings.minimum_clears);
 });
 
 _window.RIPPERS = [];
@@ -297,6 +298,8 @@ class WebGLRipperWrapper {
 	_GLCurrentAttribIndex = 0;
 	_GLCurrentAttrib = [];
 	_GLCurrentAttribEnabled = [];
+
+	_ClearCount = 0;
 	_CurrentModels = [];
 	_TextureCache = new Map();
 	_isCapturing = false;
@@ -486,7 +489,7 @@ class WebGLRipperWrapper {
 		let modelMatrixs = [
 			"modelviewmatrix", // three.js
 			"modelmatrix",
-			"world", // https://www.wayfair.com
+			"world",
 			"matrix_model"
 		];
 
@@ -778,6 +781,7 @@ class WebGLRipperWrapper {
 
 	HelperFunc_ResetAll(self, gl) {
 		self._TextureCache = new Map();
+		self._ClearCount = 0;
 	}
 
 	hooked_viewport(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/viewport
@@ -1179,7 +1183,7 @@ class WebGLRipperWrapper {
 
 	hooked_clear(self, gl, args, oFunc) { // https://developer.mozilla.org/en-US/docs/Web/API/WebGLRenderingContext/clear
 		
-		if (self._CurrentModels.length > 0 && self._isCapturing) {
+		if (self._CurrentModels.length > 0 && ++self._ClearCount >= _window.WEBGLRipperSettings.minimumClears && self._isCapturing) {
 			LogToParent("Performing rip...");
 			self.HelperFunc_PerformRIP(self, gl);
 		}
