@@ -3,7 +3,7 @@ A tool used to rip models &amp; textures from WebGL applets
 
 # How to use?
 
-> You will **NOT** find this extension on the chrome webstore or any other extension platform! If you do find it on there, it wasn't published by me and may contain malicious code.
+> You will **NOT** find this extension on the Chrome Webstore or any other extension platform! If you do find it there, it wasn't published by me and may contain malicious code.
 
 ## Chrome
 
@@ -19,8 +19,8 @@ You can then access options by clicking on the extensions icon in the top right,
 
 # How to rip?
 
-Goto a compatible webgl website and click the insert key on your keyboard and it should start downloading
+Go to a compatible WebGL website, then press the Insert key on your keyboard and it should then begin downloading.
 
 > The downloaded textures may not be the correct size and you'll have to manually resize them, this is a current known limitation.
 
-> The website might ask for permission to download multiple files, make sure you allow that! I am working on a workaround that will download it all into one big .zip file!
+> The website may request permission to download multiple files; be sure to allow this, or alternatively, navigate to the extension options and enable Download as ZIP.

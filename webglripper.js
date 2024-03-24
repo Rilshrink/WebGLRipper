@@ -209,7 +209,8 @@ _window.WEBGLRipperSettings = {
 	shouldUnFlipTex: true, // If we should unflip the textures
 	isDebug: true, // Debug Printing
 	isDoShaderCalc: false, // Force the shader to do calculations, useful for grabbing specific frames of vertex animations.
-	shouldDownloadZip: false // Download all the model assets into a zip file.
+	shouldDownloadZip: false, // Download all the model assets into a zip file.
+	minimumClears: 1, // Minimum amount of clears
 };
 
 let LogToParent = function () {
