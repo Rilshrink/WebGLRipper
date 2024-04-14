@@ -202,6 +202,7 @@ let _window = window;
 // Create config object
 _window.WEBGLRipperSettings = {
 	// Settings
+	hasLoadedSettings: false,
 	CaptureSceneKeyCode: 45, // Insert Key
 	CaptureTexturesKeyCode: 45, // Insert Key
 	defaultTexWidth: 4096,
@@ -219,7 +220,22 @@ let LogToParent = function () {
 	_window.console.log('[WebGLRipper]', ...arguments);
 };
 
-document.addEventListener("DOMContentLoaded", function(event) {
+// https://stackoverflow.com/questions/5629684/how-can-i-check-if-an-element-exists-in-the-visible-dom
+let doesElementExist = function(element) {
+	return typeof(element) != 'undefined' && element != null;
+};
+
+let loadWebGLRipperSettings = function() {
+	if(!doesElementExist(document.getElementById("webgl_ripper_settings"))) {
+		LogToParent("Settings failed to load!");
+		return;
+	}
+
+	if(_window.WEBGLRipperSettings.hasLoadedSettings) {
+		LogToParent("Settings already loaded!");
+		return;
+	}
+
 	let hiddenSettings = document.getElementById("webgl_ripper_settings");
 	let settings = JSON.parse(hiddenSettings.textContent);
 	LogToParent("Loaded Settings: ", settings);
@@ -231,7 +247,8 @@ document.addEventListener("DOMContentLoaded", function(event) {
 	_window.WEBGLRipperSettings.shouldUnFlipTex = settings.unflip_textures;
 	_window.WEBGLRipperSettings.shouldDownloadZip = settings.should_download_zip;
 	_window.WEBGLRipperSettings.minimumClears = parseInt(settings.minimum_clears);
-});
+	_window.WEBGLRipperSettings.hasLoadedSettings = true;
+};
 
 _window.RIPPERS = [];
 _window.MODELS = [];
@@ -250,6 +267,10 @@ function resizeArrayBuffer(originalBuffer, newByteSize) {
 	if(originalBuffer.byteLength > newByteSize){
 		throw new Error("Can't resize to a smaller array");
 	}
+
+	if(originalBuffer.detached)
+		return; // TODO: Fix
+
 	const resizedBuffer = new ArrayBuffer(newByteSize);
 	const originalView = new Uint8Array(originalBuffer);
 	const resizedView = new Uint8Array(resizedBuffer);
@@ -435,6 +456,7 @@ class WebGLRipperWrapper {
 		textureMap.set('albedosampler' , 'map_Kd');
 		textureMap.set('source'        , 'map_Kd');
 		textureMap.set('u_texture'     , 'map_Kd');
+		textureMap.set('texture_envatlas', 'map_Kd');
 		// classic.minecraft.net
 		textureMap.set("diffusesampler", 'map_Kd'); 
 		textureMap.set("ambientsampler", 'map_Kd');
@@ -1244,7 +1266,6 @@ class WebGLRipperWrapper {
 	}
 
 	hooked_vertexAttribDivisorANGLE(self, gl, args, oFunc) {
-
 	}
 
 	readUniformData(gl, p) {
@@ -1334,6 +1355,7 @@ function RegisterGLFunction(_GL, _RipperWrapper, _Method) {
 LogToParent("Attempting to hook into canvas 'getContext' func!");
 let oGetContext = window.HTMLCanvasElement.prototype.getContext;
 window.HTMLCanvasElement.prototype.getContext = function () {
+
 	let contextNames = ["webgl", "webgl2", "experimental-webgl"];
 	let isRequestingWebGL = contextNames.indexOf(arguments[0].toLowerCase()) != -1;
 
@@ -1341,6 +1363,9 @@ window.HTMLCanvasElement.prototype.getContext = function () {
 		LogToParent("Got unsupported context: ", arguments[0]);
 		return oGetContext.apply(this, arguments);
 	}
+
+	// Fix https://github.com/Rilshrink/WebGLRipper/issues/21
+	loadWebGLRipperSettings();
 
 	if (_window.WEBGLRipperSettings.isDoShaderCalc) {
 		arguments[0] = "webgl2"; // Force it so we can use transform feedback, should be safe to do since you can use all webgl functions with webgl2
@@ -1360,6 +1385,7 @@ window.HTMLCanvasElement.prototype.getContext = function () {
 		RegisterGLFunction(gl, glRipper, "bufferSubData");
 		RegisterGLFunction(gl, glRipper, "createBuffer");
 		RegisterGLFunction(gl, glRipper, "drawArrays");
+		RegisterGLFunction(gl, glRipper, "drawArraysInstanced");
 		RegisterGLFunction(gl, glRipper, "drawElements");
 		RegisterGLFunction(gl, glRipper, "drawElementsInstanced");
 		RegisterGLFunction(gl, glRipper, "drawBuffers");
@@ -1376,7 +1402,12 @@ window.HTMLCanvasElement.prototype.getContext = function () {
 		RegisterGLFunction(gl, glRipper, "texImage2D");
 		RegisterGLFunction(gl, glRipper, "createTexture");
 		RegisterGLFunction(gl, glRipper, "getExtension");
-		// Debug
+
+		//RegisterGLFunction(gl, glRipper, "drawArraysInstancedANGLE");
+		//RegisterGLFunction(gl, glRipper, "drawElementsInstancedANGLE");
+		//RegisterGLFunction(gl, glRipper, "bindBufferBase");
+		//RegisterGLFunction(gl, glRipper, "bindBufferRange");
+
 		RegisterGLFunction(gl, glRipper, "deleteBuffer");
 		/*
 		RegisterGLFunction(gl, glRipper, "flush");

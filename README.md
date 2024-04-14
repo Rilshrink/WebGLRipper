@@ -1,6 +1,19 @@
 # WebGLRipper
 A tool used to rip models &amp; textures from WebGL applets
 
+# Issues?
+If you encounter any issues after installing this extension, I kindly ask you to follow these steps:
+
+1. First, try disabling my extension and see if the issue persists.
+2. Check for any conflicting extensions or browser settings that might be causing the problem.
+3. If the issue persists only when my extension is enabled, please report it here.
+
+When submitting a bug report, please include as much detail as possible, such as your browser version, operating system, website you were testing, and any error messages encountered.
+
+Thank you in advanced!
+
+> If you are using shadercalc, please note that it is currently a Work-In-Progress and doesn't currently work.
+
 # How to use?
 
 > You will **NOT** find this extension on the Chrome Webstore or any other extension platform! If you do find it there, it wasn't published by me and may contain malicious code.
