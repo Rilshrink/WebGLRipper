@@ -465,6 +465,9 @@ class WebGLRipperWrapper {
 		
 		// Normals
 		textureMap.set('normalmap',   'norm'); /* PBR rendering */
+
+		// Roughness
+		textureMap.set('roughnessmap', 'map_Pr'); // three.js
 		
 		if(!textureMap.has(texname.toLowerCase())) {
 			LogToParent("Not a known texture type: ", texname);
@@ -519,6 +522,9 @@ class WebGLRipperWrapper {
 		uniformData.forEach(uniform => {
 			if (modelMatrixs.includes(uniform.name.toLowerCase())) {
 				var loc = gl.getUniformLocation(_CurrentProgram, uniform.name);
+				if(!loc) {
+                                	return;
+				}
 				modelMatrix = gl.getUniform(_CurrentProgram, loc);
 				LogToParent("Recieved modelMatrix: ", modelMatrix);
 			}
