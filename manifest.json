@@ -25,8 +25,11 @@
 		"48": "icon.png",
 		"128": "icon.png"
 	},
+	"host_permissions": {
+		"https://*/*",
+		"http://*/"
+	},
 	"permissions": [
-		"<all_urls>",
 		"contextMenus",
 		"tabs",
 		"storage"
