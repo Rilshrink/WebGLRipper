@@ -208,6 +208,7 @@ _window.WEBGLRipperSettings = {
 	defaultTexWidth: 4096,
 	defaultTexHeight: 4096, // As we can't always retrieve the width and height of a texture, we must have a default size in that case.
 	shouldUnFlipTex: true, // If we should unflip the textures
+	doModelViewMatrix: false,
 	isDebug: true, // Debug Printing
 	isDoShaderCalc: false, // Force the shader to do calculations, useful for grabbing specific frames of vertex animations.
 	shouldDownloadZip: false, // Download all the model assets into a zip file.
@@ -245,6 +246,7 @@ let loadWebGLRipperSettings = function() {
 	_window.WEBGLRipperSettings.isDoShaderCalc = settings.do_shader_calc;
 	_window.WEBGLRipperSettings.isDebug = settings.is_debug_mode;
 	_window.WEBGLRipperSettings.shouldUnFlipTex = settings.unflip_textures;
+	_window.WEBGLRipperSettings.doModelViewMatrix = settings.do_model_view_matrix;
 	_window.WEBGLRipperSettings.shouldDownloadZip = settings.should_download_zip;
 	_window.WEBGLRipperSettings.minimumClears = parseInt(settings.minimum_clears);
 	_window.WEBGLRipperSettings.hasLoadedSettings = true;
@@ -940,7 +942,6 @@ class WebGLRipperWrapper {
 		}
 
 		let textures = self.HelperFunc_GetAllTextures(self, gl);
-		let modelMatrix = self.HelperFunc_GetModelMatrix(self, gl);
 
 		let indices = [];
 
@@ -957,9 +958,14 @@ class WebGLRipperWrapper {
 		let objPrimitives = new OBJUtils.OBJPrimitive(drawMode, indices);
 		let objID = self._CurrentModels.length;
 		let builtOBJ = new OBJUtils.OBJModel(objPrimitives, self._GLCurrentVertices, self._GLCurrentNormals, self._GLCurrentUVS, textures, `RIP${objID}`);
-		if (modelMatrix){
-			builtOBJ.transform(modelMatrix);
+
+		if(_window.WEBGLRipperSettings.doModelViewMatrix) {
+			let modelMatrix = self.HelperFunc_GetModelMatrix(self, gl);
+			if (modelMatrix){
+				builtOBJ.transform(modelMatrix);
+			}
 		}
+
 		self._CurrentModels.push(builtOBJ);
 		LogToParent("Finished Building OBJ: ", builtOBJ);
 		
@@ -1071,14 +1077,18 @@ class WebGLRipperWrapper {
 		}
 
 		let textures = self.HelperFunc_GetAllTextures(self, gl);
-		let modelMatrix = self.HelperFunc_GetModelMatrix(self, gl);
 
 		let objPrimitives = new OBJUtils.OBJPrimitive(drawMode, indices);
 		let objID = self._CurrentModels.length;
 		let builtOBJ = new OBJUtils.OBJModel(objPrimitives, self._GLCurrentVertices, self._GLCurrentNormals, self._GLCurrentUVS, textures, `RIP${objID}`);
-		if (modelMatrix){
-			builtOBJ.transform(modelMatrix);
+
+		if(_window.WEBGLRipperSettings.doModelViewMatrix) {
+			let modelMatrix = self.HelperFunc_GetModelMatrix(self, gl);
+			if (modelMatrix){
+				builtOBJ.transform(modelMatrix);
+			}
 		}
+
 		self._CurrentModels.push(builtOBJ);
 		LogToParent("Finished Building OBJ: ", builtOBJ);
 		
