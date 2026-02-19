@@ -631,7 +631,16 @@ class WebGLRipperWrapper {
 
 			let bufferData = [];
 
-			let vAttribData = self._GLCurrentAttrib[attr.loc];
+			// TODO: Improve the actual capture :/
+			// Fix: https://github.com/Rilshrink/WebGLRipper/issues/30
+			//let vAttribData = self._GLCurrentAttrib[attr.loc];
+			let vAttribData = {
+			    size:       gl.getVertexAttrib(attr.loc, gl.VERTEX_ATTRIB_ARRAY_SIZE),
+			    type:       gl.getVertexAttrib(attr.loc, gl.VERTEX_ATTRIB_ARRAY_TYPE),
+			    stride:     gl.getVertexAttrib(attr.loc, gl.VERTEX_ATTRIB_ARRAY_STRIDE),
+			    offset:     gl.getVertexAttribOffset(attr.loc, gl.VERTEX_ATTRIB_ARRAY_POINTER),
+			    normalized: gl.getVertexAttrib(attr.loc, gl.VERTEX_ATTRIB_ARRAY_NORMALIZED),
+			};
 			
 			if(vAttribData == null) {
 				LogToParent("Missing attrib data at location: ", attr.loc);
@@ -662,7 +671,14 @@ class WebGLRipperWrapper {
 			};
 
 			const TypedArrayConstructor = TypedArrayMap[vAttribData.type];
-			_bufferData = new TypedArrayConstructor(_bufferData, vAttribData.offset);
+			
+			// Fix other bug
+			if(_bufferData instanceof ArrayBuffer) {
+				_bufferData = new TypedArrayConstructor(_bufferData, vAttribData.offset);
+			} else {
+				_bufferData = new TypedArrayConstructor(_bufferData.buffer, vAttribData.offset);
+			}
+			
 			
 			let byteOffset = vAttribData.offset;
 			while (byteOffset <= _bufferData.byteLength) {
