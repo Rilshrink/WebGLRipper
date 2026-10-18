@@ -47,24 +47,31 @@
     <option value="8192x8192">8192x8192px</option>
     <option value="16384x16384">16384x16384px</option>
 </select>
+
+<br>
+<label class="tooltip">
+  <input type="button" id="ripper_keybind" value="Keybind: ">
+  <span class="tooltiptext">Change the keybind used to rip the models. (Default is 'INSERT')</span>
+</label>
+
 <br>
 <label class="tooltip">
   <input type="range" min="1" max="10" value="1" class="slider" id="ripper_minimumclears">
-  <span class="tooltiptext">In case a program calls clear multiple times and breaks collecting the models</span>
+  <span class="tooltiptext">In case a program calls clear multiple times and breaks collecting every model. (Recommended value of 3 on broken sites)</span>
   Minimum Clears
 </label>
 
 <br>
 <label class="tooltip">
   <input type="checkbox" id="ripper_shouldfliptextures">
-  <span class="tooltiptext">OpenGL by default flips textures, so we must unflip them</span>
+  <span class="tooltiptext">OpenGL by default flips textures, so we must unflip them.</span>
   Should Unflip Textures
 </label>
 
 <br>
 <label class="tooltip">
   <input type="checkbox" id="ripper_domodelviewmatrix">
-  <span class="tooltiptext">Will attempt to restore the position of objects in the scene</span>
+  <span class="tooltiptext">Will attempt to restore the position of objects in the scene.</span>
   Use Model View Matrix
 </label>
 
@@ -78,14 +85,14 @@
 <br>
 <label class="tooltip">
   <input type="checkbox" id="ripper_downloadzip">
-  <span class="tooltiptext">Download all files into one .zip</span>
-  Download as ZIP (WIP)
+  <span class="tooltiptext">Combines all files into one .zip file.</span>
+  Download as ZIP
 </label>
 
 <br>
 <label class="tooltip">
   <input type="checkbox" id="ripper_debug">
-  <span class="tooltiptext">Prints info in console</span>
+  <span class="tooltiptext">Prints info into the console.</span>
   Debug Mode
 </label>
 

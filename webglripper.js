@@ -249,6 +249,7 @@ let loadWebGLRipperSettings = function() {
 	_window.WEBGLRipperSettings.doModelViewMatrix = settings.do_model_view_matrix;
 	_window.WEBGLRipperSettings.shouldDownloadZip = settings.should_download_zip;
 	_window.WEBGLRipperSettings.minimumClears = parseInt(settings.minimum_clears);
+	_window.WEBGLRipperSettings.CaptureSceneKeyCode = parseInt(settings.keybind) || 45;
 	_window.WEBGLRipperSettings.hasLoadedSettings = true;
 };
 

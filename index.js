@@ -3,6 +3,7 @@
 	// Extremely hacky way to make this work, since you can't access chrome.storage
 	(chrome || browser).storage.sync.get({
 		default_texture_res: '4096x4096',
+		keybind: 45,
 		do_shader_calc: false,
 		is_debug_mode: true,
 		unflip_textures: true,

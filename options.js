@@ -1,3 +1,7 @@
+var is_selecting_keycode = false;
+var current_keycode = 45;
+var current_keyname = 'Insert';
+
 // Saves options to chrome.storage
 function save_options() {
   let defaultTextureRes = document.getElementById('ripper_defaulttexres').value;
@@ -10,6 +14,8 @@ function save_options() {
 
   (chrome || browser).storage.sync.set({
     default_texture_res: defaultTextureRes,
+    keybind: current_keycode,
+    keyname: current_keyname,
     do_shader_calc: shadercalc,
     is_debug_mode: debugmode,
     unflip_textures: unfliptex,
@@ -31,11 +37,13 @@ function save_options() {
 function restore_options() {
   (chrome || browser).storage.sync.get({
     default_texture_res: '4096x4096',
+    keybind: 45,
+    keyname: 'Insert',
     do_shader_calc: false,
     is_debug_mode: false,
     unflip_textures: true,
     do_model_view_matrix: true,
-    should_download_zip: false,
+    should_download_zip: true,
     minimum_clears: 1
   }, function(items) {
     document.getElementById('ripper_defaulttexres').value = items.default_texture_res;
@@ -45,12 +53,31 @@ function restore_options() {
     document.getElementById('ripper_domodelviewmatrix').checked = items.do_model_view_matrix;
     document.getElementById('ripper_downloadzip').checked = items.should_download_zip;
     document.getElementById('ripper_minimumclears').value = items.minimum_clears;
+    document.getElementById('ripper_keybind').value = `Keybind: ${items.keyname}`;
+    current_keycode = items.keybind;
+    current_keyname = items.keyname;
+    is_selecting_keycode = false;
   });
 }
 
 document.addEventListener('keydown', function (event) {
-	
+  if(!is_selecting_keycode) {
+    return;
+  }
+
+  current_keycode = event.which;
+  current_keyname = event.code;
+  document.getElementById('ripper_keybind').value = `Keybind: ${current_keyname}`;
+  is_selecting_keycode = false;
 });
 
 document.addEventListener('DOMContentLoaded', restore_options);
 document.getElementById('save').addEventListener('click', save_options);
+document.getElementById('ripper_keybind').addEventListener('click', function() {
+  is_selecting_keycode = !is_selecting_keycode;
+  if(is_selecting_keycode) {
+    document.getElementById('ripper_keybind').value = 'Waiting...';
+  } else {
+    document.getElementById('ripper_keybind').value = `Keybind: ${current_keyname}`;
+  }
+});
